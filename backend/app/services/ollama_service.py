@@ -57,6 +57,21 @@ async def test_model(ollama_url: str, model: str) -> dict:
         return {"success": False, "error": str(e)}
 
 
+async def chat_generate(
+    ollama_url: str,
+    model: str,
+    messages: list[dict],
+) -> str:
+    """Non-streaming chat — returns the full response text."""
+    async with httpx.AsyncClient(timeout=OLLAMA_TIMEOUT) as client:
+        resp = await client.post(
+            f"{ollama_url}/api/chat",
+            json={"model": model, "messages": messages, "stream": False},
+        )
+        resp.raise_for_status()
+        return resp.json().get("message", {}).get("content", "")
+
+
 async def chat_stream(
     ollama_url: str,
     model: str,

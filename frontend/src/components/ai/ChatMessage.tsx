@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import ReactMarkdown from 'react-markdown'
-import { ChevronDown, ChevronRight, Loader2, Check, X as XIcon, AlertCircle } from 'lucide-react'
+import { ChevronDown, ChevronRight, Loader2, Check, X as XIcon, AlertCircle, FileSearch } from 'lucide-react'
 import type { ChatMessage as ChatMessageType, ToolProposal } from '@/types'
 import ToolProposalCard from './ToolProposalCard'
 
@@ -146,6 +146,31 @@ export default function ChatMessage({
           {resultExpanded && hasResult && (
             <div className="mt-1.5 text-xs bg-gray-50 border border-gray-100 rounded-lg p-3 max-h-48 overflow-auto font-mono whitespace-pre-wrap text-gray-600">
               {message.tool_args}
+            </div>
+          )}
+        </div>
+      </div>
+    )
+  }
+
+  if (message.role === 'image_extraction') {
+    return (
+      <div className="flex justify-start mb-3">
+        <div className="max-w-[85%] bg-blue-50 border border-blue-100 rounded-2xl rounded-bl-md px-4 py-2.5 text-sm">
+          <button
+            onClick={() => setResultExpanded(!resultExpanded)}
+            className="flex items-center gap-2 text-blue-700 hover:text-blue-900 font-medium w-full"
+          >
+            <FileSearch className="w-4 h-4 shrink-0" />
+            <span>Dokumentanalys</span>
+            {resultExpanded
+              ? <ChevronDown className="w-3.5 h-3.5 ml-auto" />
+              : <ChevronRight className="w-3.5 h-3.5 ml-auto" />
+            }
+          </button>
+          {resultExpanded && (
+            <div className="mt-2 text-xs text-blue-900/80 leading-relaxed ai-markdown">
+              <ReactMarkdown>{message.content || ''}</ReactMarkdown>
             </div>
           )}
         </div>

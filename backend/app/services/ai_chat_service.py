@@ -19,10 +19,29 @@ from app.services.ai_tools import (
     is_read_tool,
     is_write_tool,
 )
-from app.services.ollama_service import chat_stream
+from app.services.ollama_service import chat_generate, chat_stream
 
 MAX_TOOL_ROUNDS = 5
 AI_UPLOADS_DIR = Path("/app/uploads/ai_uploads")
+
+IMAGE_EXTRACTION_PROMPT = """\
+Analysera bifogade bilder noggrant och extrahera ALL synlig information. \
+Svara ENBART med den extraherade informationen i punktform.
+
+Inkludera (om synligt):
+- Leverantör / företagsnamn
+- Organisationsnummer
+- Fakturanummer
+- Fakturadatum
+- Förfallodatum
+- Belopp exkl. moms
+- Moms (belopp och procentsats)
+- Totalbelopp inkl. moms
+- Betalningsreferens / OCR-nummer
+- Bankgiro / plusgiro / kontonummer
+- Enskilda rader/poster: beskrivning, antal, enhetspris, momssats och radbelopp per rad
+- Övrig relevant information (adress, telefon, e-post, etc.)
+"""
 
 
 def _sse_event(event: str, data: dict) -> dict:
@@ -57,6 +76,8 @@ def _build_ollama_messages(session: ChatSession, system_prompt: str) -> list[dic
             messages.append({"role": "assistant", "content": "", "tool_calls": [tool_call]})
         elif msg.role == "tool_result":
             messages.append({"role": "tool", "content": msg.content or ""})
+        elif msg.role == "image_extraction":
+            messages.append({"role": "user", "content": f"[Dokumentanalys av bifogad fil]\n{msg.content}"})
 
     return messages
 
@@ -84,6 +105,14 @@ def _load_as_base64_images(upload: AIUpload) -> list[str]:
             return []
 
     return []
+
+
+async def _extract_image_content(ollama_url: str, model: str, images: list[str]) -> str:
+    """Run a dedicated vision pass to extract all visible information from images."""
+    messages = [
+        {"role": "user", "content": IMAGE_EXTRACTION_PROMPT, "images": images},
+    ]
+    return await chat_generate(ollama_url, model, messages)
 
 
 def _add_images_to_last_user_message(messages: list[dict], images: list[str]) -> None:
@@ -156,6 +185,25 @@ async def stream_chat_response(
             if upload:
                 images.extend(_load_as_base64_images(upload))
 
+    # Pre-extract image content before the main chat flow
+    if images:
+        yield _sse_event("image_extracting", {})
+        try:
+            extraction_text = await _extract_image_content(
+                settings.ollama_url, settings.ollama_model, images
+            )
+            if extraction_text.strip():
+                extraction_msg = ChatMessage(
+                    session_id=session.id,
+                    role="image_extraction",
+                    content=extraction_text.strip(),
+                )
+                db.add(extraction_msg)
+                db.commit()
+                yield _sse_event("image_extracted", {"content": extraction_text.strip()})
+        except Exception:
+            pass
+
     # Determine fiscal year (use latest for the company)
     from app.models.fiscal_year import FiscalYear
 
@@ -170,11 +218,11 @@ async def stream_chat_response(
     # Build system prompt
     system_prompt = build_system_prompt(settings.system_prompt)
 
-    # Build message history
+    # Build message history (includes extraction if saved above)
     db.refresh(session)
     ollama_messages = _build_ollama_messages(session, system_prompt)
 
-    # Add images to the last user message
+    # Add images to the last user message (still sent once for visual context)
     if images:
         _add_images_to_last_user_message(ollama_messages, images)
 

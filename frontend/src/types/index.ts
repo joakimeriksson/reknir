@@ -760,7 +760,7 @@ export interface ChatSession {
 export interface ChatMessage {
   id: number
   session_id: number
-  role: 'user' | 'assistant' | 'tool_call' | 'tool_result'
+  role: 'user' | 'assistant' | 'tool_call' | 'tool_result' | 'image_extraction'
   content: string | null
   tool_name: string | null
   tool_args: string | null
@@ -783,6 +783,7 @@ export interface ToolProposal {
   display_name: string
   tool_args: Record<string, unknown>
   round: number
+  ai_upload_ids?: number[]
 }
 
 export interface AIUpload {

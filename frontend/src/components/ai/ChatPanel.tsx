@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef, useCallback } from 'react'
 import { useNavigate, useLocation } from 'react-router-dom'
-import { X, Plus, Send, Paperclip, Loader2, Trash2, ChevronDown } from 'lucide-react'
+import { X, Plus, Send, Paperclip, Loader2, Trash2, ChevronDown, FileSearch } from 'lucide-react'
 import { useCompany } from '@/contexts/CompanyContext'
 import { useAIForm } from '@/contexts/AIFormContext'
 import type { AIFormType } from '@/contexts/AIFormContext'
@@ -35,6 +35,7 @@ export default function ChatPanel({ isOpen, onClose }: ChatPanelProps) {
     sessions,
     currentSessionId,
     isStreaming,
+    isExtracting,
     pendingProposal,
     streamingContent,
     error,
@@ -64,7 +65,7 @@ export default function ChatPanel({ isOpen, onClose }: ChatPanelProps) {
     const mapping = TOOL_FORM_MAP[pendingProposal.tool_name]
     if (!mapping) return
 
-    openForm(mapping.type, pendingProposal.tool_args, pendingProposal.message_id)
+    openForm(mapping.type, pendingProposal.tool_args, pendingProposal.message_id, pendingProposal.ai_upload_ids)
     clearProposal()
     if (location.pathname !== mapping.route) {
       navigate(mapping.route)
@@ -289,8 +290,18 @@ export default function ChatPanel({ isOpen, onClose }: ChatPanelProps) {
           />
         )}
 
+        {/* Image extraction indicator */}
+        {isExtracting && (
+          <div className="flex justify-start mb-3">
+            <div className="flex items-center gap-2 bg-blue-50 border border-blue-100 px-4 py-2.5 rounded-2xl rounded-bl-md text-sm text-blue-700 animate-pulse">
+              <FileSearch className="w-4 h-4" />
+              <span>Analyserar dokument...</span>
+            </div>
+          </div>
+        )}
+
         {/* Loading indicator */}
-        {isStreaming && !streamingContent && (
+        {isStreaming && !streamingContent && !isExtracting && (
           <div className="flex justify-start mb-3">
             <div className="bg-gray-100 px-4 py-2.5 rounded-2xl rounded-bl-md">
               <Loader2 className="w-4 h-4 animate-spin text-gray-500" />

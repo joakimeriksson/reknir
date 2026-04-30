@@ -81,6 +81,7 @@ export function useAIChat() {
   const [sessions, setSessions] = useState<ChatSession[]>([])
   const [currentSessionId, setCurrentSessionId] = useState<number | null>(null)
   const [isStreaming, setIsStreaming] = useState(false)
+  const [isExtracting, setIsExtracting] = useState(false)
   const [pendingProposal, setPendingProposal] = useState<ToolProposal | null>(null)
   const [streamingContent, setStreamingContent] = useState('')
   const [error, setError] = useState<string | null>(null)
@@ -163,12 +164,48 @@ export function useAIChat() {
           const data = event.data ? JSON.parse(event.data) : {}
 
           switch (event.event) {
+            case 'image_extracting': {
+              setIsExtracting(true)
+              break
+            }
+            case 'image_extracted': {
+              setIsExtracting(false)
+              const extractionMsg: ChatMessage = {
+                id: Date.now(),
+                session_id: 0,
+                role: 'image_extraction',
+                content: data.content || '',
+                tool_name: null,
+                tool_args: null,
+                tool_status: null,
+                attachment_ids: null,
+                created_at: new Date().toISOString(),
+              }
+              setMessages((prev) => [...prev, extractionMsg])
+              break
+            }
             case 'token': {
               accumulatedContent += data.content || ''
               setStreamingContent(accumulatedContent)
               break
             }
             case 'tool_executing': {
+              if (accumulatedContent) {
+                const textMsg: ChatMessage = {
+                  id: Date.now(),
+                  session_id: 0,
+                  role: 'assistant',
+                  content: accumulatedContent,
+                  tool_name: null,
+                  tool_args: null,
+                  tool_status: null,
+                  attachment_ids: null,
+                  created_at: new Date().toISOString(),
+                }
+                setMessages((prev) => [...prev, textMsg])
+                accumulatedContent = ''
+                setStreamingContent('')
+              }
               const toolMsg: ChatMessage = {
                 id: Date.now(),
                 session_id: 0,
@@ -229,6 +266,7 @@ export function useAIChat() {
                 display_name: data.display_name,
                 tool_args: data.tool_args,
                 round: data.round,
+                ai_upload_ids: data.ai_upload_ids,
               })
               break
             }
@@ -414,6 +452,7 @@ export function useAIChat() {
     sessions,
     currentSessionId,
     isStreaming,
+    isExtracting,
     pendingProposal,
     streamingContent,
     error,
