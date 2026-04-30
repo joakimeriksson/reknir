@@ -21,13 +21,14 @@ export default function Customers() {
   const [editingCustomer, setEditingCustomer] = useState<Customer | null>(null)
   const [editingSupplier, setEditingSupplier] = useState<Supplier | null>(null)
   const [activeTab, setActiveTab] = useState<'customers' | 'suppliers'>('customers')
+  const [customerInitialData, setCustomerInitialData] = useState<Partial<Customer> | undefined>()
+  const [supplierInitialData, setSupplierInitialData] = useState<Partial<Supplier> | undefined>()
 
   useEffect(() => {
     if (!pendingForm) return
     if (pendingForm.type === 'customer') {
       const d = pendingForm.data
-      setEditingCustomer({
-        id: 0, company_id: 0, active: true, country: 'Sverige', payment_terms_days: 30,
+      setCustomerInitialData({
         name: (d.name as string) || '',
         org_number: (d.org_number as string) || '',
         email: (d.email as string) || '',
@@ -41,8 +42,7 @@ export default function Customers() {
       clearForm()
     } else if (pendingForm.type === 'supplier') {
       const d = pendingForm.data
-      setEditingSupplier({
-        id: 0, company_id: 0, active: true, country: 'Sverige', payment_terms_days: 30,
+      setSupplierInitialData({
         name: (d.name as string) || '',
         org_number: (d.org_number as string) || '',
         email: (d.email as string) || '',
@@ -317,13 +317,16 @@ export default function Customers() {
         <CreateCustomerModal
           companyId={selectedCompany.id}
           customer={editingCustomer}
+          initialData={customerInitialData}
           onClose={() => {
             setShowCreateCustomerModal(false)
             setEditingCustomer(null)
+            setCustomerInitialData(undefined)
           }}
           onSuccess={() => {
             setShowCreateCustomerModal(false)
             setEditingCustomer(null)
+            setCustomerInitialData(undefined)
             loadData()
           }}
         />
@@ -334,13 +337,16 @@ export default function Customers() {
         <CreateSupplierModal
           companyId={selectedCompany.id}
           supplier={editingSupplier}
+          initialData={supplierInitialData}
           onClose={() => {
             setShowCreateSupplierModal(false)
             setEditingSupplier(null)
+            setSupplierInitialData(undefined)
           }}
           onSuccess={() => {
             setShowCreateSupplierModal(false)
             setEditingSupplier(null)
+            setSupplierInitialData(undefined)
             loadData()
           }}
         />
@@ -353,22 +359,24 @@ export default function Customers() {
 interface CreateCustomerModalProps {
   companyId: number
   customer?: Customer | null
+  initialData?: Partial<Customer>
   onClose: () => void
   onSuccess: () => void
 }
 
-function CreateCustomerModal({ companyId, customer, onClose, onSuccess }: CreateCustomerModalProps) {
+function CreateCustomerModal({ companyId, customer, initialData, onClose, onSuccess }: CreateCustomerModalProps) {
+  const source = customer || initialData
   const [formData, setFormData] = useState({
-    name: customer?.name || '',
-    org_number: customer?.org_number || '',
-    contact_person: customer?.contact_person || '',
-    email: customer?.email || '',
-    phone: customer?.phone || '',
-    address: customer?.address || '',
-    postal_code: customer?.postal_code || '',
-    city: customer?.city || '',
-    country: customer?.country || 'Sverige',
-    payment_terms_days: customer?.payment_terms_days || 30,
+    name: source?.name || '',
+    org_number: source?.org_number || '',
+    contact_person: source?.contact_person || '',
+    email: source?.email || '',
+    phone: source?.phone || '',
+    address: source?.address || '',
+    postal_code: source?.postal_code || '',
+    city: source?.city || '',
+    country: source?.country || 'Sverige',
+    payment_terms_days: source?.payment_terms_days || 30,
   })
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -579,24 +587,26 @@ function CreateCustomerModal({ companyId, customer, onClose, onSuccess }: Create
 interface CreateSupplierModalProps {
   companyId: number
   supplier?: Supplier | null
+  initialData?: Partial<Supplier>
   onClose: () => void
   onSuccess: () => void
 }
 
-function CreateSupplierModal({ companyId, supplier, onClose, onSuccess }: CreateSupplierModalProps) {
+function CreateSupplierModal({ companyId, supplier, initialData, onClose, onSuccess }: CreateSupplierModalProps) {
+  const source = supplier || initialData
   const [formData, setFormData] = useState({
-    name: supplier?.name || '',
-    org_number: supplier?.org_number || '',
-    contact_person: supplier?.contact_person || '',
-    email: supplier?.email || '',
-    phone: supplier?.phone || '',
-    address: supplier?.address || '',
-    postal_code: supplier?.postal_code || '',
-    city: supplier?.city || '',
-    country: supplier?.country || 'Sverige',
-    payment_terms_days: supplier?.payment_terms_days || 30,
-    bank_account: supplier?.bank_account || '',
-    bank_name: supplier?.bank_name || '',
+    name: source?.name || '',
+    org_number: source?.org_number || '',
+    contact_person: source?.contact_person || '',
+    email: source?.email || '',
+    phone: source?.phone || '',
+    address: source?.address || '',
+    postal_code: source?.postal_code || '',
+    city: source?.city || '',
+    country: source?.country || 'Sverige',
+    payment_terms_days: source?.payment_terms_days || 30,
+    bank_account: source?.bank_account || '',
+    bank_name: source?.bank_name || '',
   })
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)

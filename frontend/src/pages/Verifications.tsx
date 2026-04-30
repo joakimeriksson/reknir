@@ -1,7 +1,7 @@
 import { useEffect, useState, useCallback } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { Plus, Edit, Trash2, CheckCircle } from 'lucide-react'
-import { verificationApi, accountApi } from '@/services/api'
+import { verificationApi, accountApi, aiApi } from '@/services/api'
 import type { VerificationListItem, Account, Verification, EntityAttachment } from '@/types'
 import { useFiscalYear } from '@/contexts/FiscalYearContext'
 import { useCompany } from '@/contexts/CompanyContext'
@@ -33,14 +33,28 @@ export default function Verifications() {
   useEffect(() => {
     if (pendingForm?.type === 'verification') {
       const d = pendingForm.data
-      setVerificationInitialData({
-        description: d.description as string,
-        transaction_date: d.transaction_date as string,
-        series: d.series as string,
-        lines: d.lines as Partial<import('@/types').TransactionLine>[],
-      })
-      setShowCreateModal(true)
+      const uploadIds = pendingForm.aiUploadIds || []
       clearForm()
+
+      const open = async () => {
+        const attachmentIds: number[] = []
+        for (const uploadId of uploadIds) {
+          try {
+            const resp = await aiApi.copyToAttachment(uploadId)
+            attachmentIds.push(resp.data.id)
+          } catch { /* ignore */ }
+        }
+        setVerificationInitialData({
+          description: d.description as string,
+          transaction_date: d.transaction_date as string,
+          series: d.series as string,
+          lines: d.lines as Partial<import('@/types').TransactionLine>[],
+          pendingAttachmentIds: attachmentIds.length > 0 ? attachmentIds : undefined,
+        })
+        setPendingAttachmentIds(attachmentIds)
+        setShowCreateModal(true)
+      }
+      open()
     }
   }, [pendingForm, clearForm])
 

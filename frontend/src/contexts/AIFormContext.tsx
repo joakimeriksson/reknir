@@ -14,11 +14,12 @@ export interface PendingForm {
   type: AIFormType
   data: Record<string, unknown>
   messageId: number
+  aiUploadIds?: number[]
 }
 
 interface AIFormContextType {
   pendingForm: PendingForm | null
-  openForm: (type: AIFormType, data: Record<string, unknown>, messageId: number) => void
+  openForm: (type: AIFormType, data: Record<string, unknown>, messageId: number, aiUploadIds?: number[]) => void
   clearForm: () => void
 }
 
@@ -31,8 +32,8 @@ const AIFormContext = createContext<AIFormContextType>({
 export function AIFormProvider({ children }: { children: ReactNode }) {
   const [pendingForm, setPendingForm] = useState<PendingForm | null>(null)
 
-  const openForm = useCallback((type: AIFormType, data: Record<string, unknown>, messageId: number) => {
-    setPendingForm({ type, data, messageId })
+  const openForm = useCallback((type: AIFormType, data: Record<string, unknown>, messageId: number, aiUploadIds?: number[]) => {
+    setPendingForm({ type, data, messageId, aiUploadIds })
   }, [])
 
   const clearForm = useCallback(() => {

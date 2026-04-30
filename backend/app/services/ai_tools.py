@@ -41,6 +41,16 @@ WRITE_TOOLS = {
     "create_expense",
 }
 
+FORM_TOOLS = {
+    "create_verification",
+    "create_supplier",
+    "create_customer",
+    "create_account",
+    "create_supplier_invoice",
+    "create_invoice",
+    "create_expense",
+}
+
 # Swedish display names for tool status messages
 TOOL_DISPLAY_NAMES = {
     "get_company_info": "Hämtar företagsinformation",

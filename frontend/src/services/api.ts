@@ -430,6 +430,8 @@ export const aiApi = {
     })
   },
   getUploadUrl: (uploadId: number) => `${API_BASE_URL}/ai/uploads/${uploadId}`,
+  copyToAttachment: (uploadId: number) =>
+    api.post<Attachment>(`/ai/uploads/${uploadId}/to-attachment`),
 }
 
 export default api
