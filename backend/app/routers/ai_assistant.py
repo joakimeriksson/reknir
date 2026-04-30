@@ -1,6 +1,6 @@
 """AI assistant router — chat, settings, sessions, and file uploads."""
 
-import json
+import shutil
 import uuid
 from pathlib import Path
 
@@ -13,6 +13,7 @@ from sse_starlette.sse import EventSourceResponse
 from app.database import get_db
 from app.dependencies import get_current_active_user, oauth2_scheme, require_admin
 from app.models.ai_assistant import AISettings, AIUpload, ChatMessage, ChatSession
+from app.models.attachment import Attachment, AttachmentStatus
 from app.models.user import User
 from app.schemas.ai_assistant import (
     AISettingsResponse,
@@ -25,6 +26,7 @@ from app.schemas.ai_assistant import (
     OllamaModelInfo,
     ToolApprovalRequest,
 )
+from app.schemas.attachment import AttachmentResponse
 from app.services import ai_chat_service, ollama_service
 
 router = APIRouter()
@@ -107,7 +109,7 @@ async def list_models(
         models = await ollama_service.list_models(settings.ollama_url)
         return [OllamaModelInfo(**m) for m in models]
     except Exception as e:
-        raise HTTPException(status_code=502, detail=f"Could not reach Ollama: {e}")
+        raise HTTPException(status_code=502, detail=f"Could not reach Ollama: {e}") from e
 
 
 # --- Chat ---
@@ -220,6 +222,44 @@ async def get_upload(
         media_type=upload.mime_type,
         filename=upload.original_filename,
     )
+
+
+@router.post("/uploads/{upload_id}/to-attachment", response_model=AttachmentResponse)
+async def copy_upload_to_attachment(
+    upload_id: int,
+    current_user: User = Depends(get_current_active_user),
+    db: Session = Depends(get_db),
+):
+    """Copy an AI upload to a real bookkeeping attachment (server-side file copy)."""
+    from app.services.attachment_service import ATTACHMENTS_DIR
+
+    upload = db.query(AIUpload).filter(AIUpload.id == upload_id).first()
+    if not upload:
+        raise HTTPException(status_code=404, detail="Upload not found")
+
+    src_path = AI_UPLOADS_DIR / upload.storage_filename
+    if not src_path.exists():
+        raise HTTPException(status_code=404, detail="Source file not found")
+
+    ext = Path(upload.original_filename).suffix
+    new_storage_filename = f"{uuid.uuid4()}{ext}"
+    dst_path = ATTACHMENTS_DIR / new_storage_filename
+    ATTACHMENTS_DIR.mkdir(parents=True, exist_ok=True)
+    shutil.copy2(str(src_path), str(dst_path))
+
+    attachment = Attachment(
+        company_id=upload.company_id,
+        original_filename=upload.original_filename,
+        storage_filename=new_storage_filename,
+        mime_type=upload.mime_type,
+        size_bytes=upload.size_bytes,
+        status=AttachmentStatus.UPLOADED,
+        created_by=current_user.id,
+    )
+    db.add(attachment)
+    db.commit()
+    db.refresh(attachment)
+    return attachment
 
 
 # --- Sessions ---

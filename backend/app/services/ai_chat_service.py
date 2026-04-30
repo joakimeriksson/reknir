@@ -12,6 +12,7 @@ from app.models.user import User
 from app.services.ai_api_client import AIAPIClient
 from app.services.ai_system_prompt import build_system_prompt
 from app.services.ai_tools import (
+    FORM_TOOLS,
     TOOL_DEFINITIONS,
     execute_tool,
     get_display_name,
@@ -299,11 +300,20 @@ async def _tool_loop(
                         role="tool_call",
                         tool_name=tool_name,
                         tool_args=json.dumps(tool_args, ensure_ascii=False),
-                        tool_status="pending",
+                        tool_status="executed" if tool_name in FORM_TOOLS else "pending",
                     )
                     db.add(tc_msg)
                     db.commit()
                     db.refresh(tc_msg)
+
+                    ai_upload_ids = []
+                    for msg in reversed(session.messages):
+                        if msg.role == "user" and msg.attachment_ids:
+                            try:
+                                ai_upload_ids = json.loads(msg.attachment_ids)
+                            except (json.JSONDecodeError, TypeError):
+                                pass
+                            break
 
                     yield _sse_event("tool_proposal", {
                         "message_id": tc_msg.id,
@@ -311,6 +321,7 @@ async def _tool_loop(
                         "display_name": get_display_name(tool_name),
                         "tool_args": tool_args,
                         "round": round_num,
+                        "ai_upload_ids": ai_upload_ids,
                     })
                     # Stop the loop — wait for approval
                     return
@@ -424,8 +435,6 @@ async def approve_tool(
     db.refresh(session)
     ollama_messages = _build_ollama_messages(session, system_prompt)
 
-    # Determine which round we're resuming from
-    round_info_raw = tc_msg.tool_args  # We stored round in the proposal event, not here
     # Resume from next round (we don't track round in DB, so count tool_call messages)
     tool_call_count = (
         db.query(ChatMessage)
