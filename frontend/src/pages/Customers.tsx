@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { Plus, Edit2, Trash2, X } from 'lucide-react'
 import { customerApi, supplierApi } from '@/services/api'
 import type { Customer, Supplier } from '@/types'
+import { PaymentType } from '@/types'
 import { getErrorMessage } from '@/utils/errors'
 import { useCompany } from '@/contexts/CompanyContext'
 import { useSortableTable } from '@/hooks/useSortableTable'
@@ -605,8 +606,13 @@ function CreateSupplierModal({ companyId, supplier, initialData, onClose, onSucc
     city: source?.city || '',
     country: source?.country || 'Sverige',
     payment_terms_days: source?.payment_terms_days || 30,
-    bank_account: source?.bank_account || '',
-    bank_name: source?.bank_name || '',
+    payment_type: source?.payment_type || '' as PaymentType | '',
+    bankgiro_number: source?.bankgiro_number || '',
+    plusgiro_number: source?.plusgiro_number || '',
+    clearing_number: source?.clearing_number || '',
+    account_number: source?.account_number || '',
+    iban: source?.iban || '',
+    bic: source?.bic || '',
   })
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -631,8 +637,13 @@ function CreateSupplierModal({ companyId, supplier, initialData, onClose, onSucc
         city: formData.city || undefined,
         country: formData.country,
         payment_terms_days: formData.payment_terms_days,
-        bank_account: formData.bank_account || undefined,
-        bank_name: formData.bank_name || undefined,
+        payment_type: formData.payment_type || null,
+        bankgiro_number: formData.bankgiro_number || null,
+        plusgiro_number: formData.plusgiro_number || null,
+        clearing_number: formData.clearing_number || null,
+        account_number: formData.account_number || null,
+        iban: formData.iban || null,
+        bic: formData.bic || null,
       }
 
       if (isEditing) {
@@ -792,29 +803,104 @@ function CreateSupplierModal({ companyId, supplier, initialData, onClose, onSucc
               />
             </div>
 
-            <div>
+            <div className="md:col-span-2">
               <label className="block text-sm font-medium text-gray-700 mb-2">
-                Bankkontonummer
+                Betalningstyp
               </label>
-              <input
-                type="text"
-                value={formData.bank_account}
-                onChange={(e) => setFormData({ ...formData, bank_account: e.target.value })}
-                className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500"
-              />
+              <select
+                value={formData.payment_type}
+                onChange={(e) => setFormData({ ...formData, payment_type: e.target.value as PaymentType | '' })}
+                className="w-full md:w-1/2 px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500"
+              >
+                <option value="">Välj betalningstyp...</option>
+                <option value={PaymentType.BANKGIRO}>Bankgiro</option>
+                <option value={PaymentType.PLUSGIRO}>Plusgiro</option>
+                <option value={PaymentType.BANK_ACCOUNT}>Bankkonto</option>
+              </select>
             </div>
 
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-2">
-                Bank
-              </label>
-              <input
-                type="text"
-                value={formData.bank_name}
-                onChange={(e) => setFormData({ ...formData, bank_name: e.target.value })}
-                className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500"
-              />
-            </div>
+            {formData.payment_type === PaymentType.BANKGIRO && (
+              <div className="md:col-span-2">
+                <label className="block text-sm font-medium text-gray-700 mb-2">
+                  Bankgironummer
+                </label>
+                <input
+                  type="text"
+                  value={formData.bankgiro_number}
+                  onChange={(e) => setFormData({ ...formData, bankgiro_number: e.target.value })}
+                  className="w-full md:w-1/2 px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500"
+                  placeholder="t.ex. 123-4567"
+                />
+              </div>
+            )}
+
+            {formData.payment_type === PaymentType.PLUSGIRO && (
+              <div className="md:col-span-2">
+                <label className="block text-sm font-medium text-gray-700 mb-2">
+                  Plusgironummer
+                </label>
+                <input
+                  type="text"
+                  value={formData.plusgiro_number}
+                  onChange={(e) => setFormData({ ...formData, plusgiro_number: e.target.value })}
+                  className="w-full md:w-1/2 px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500"
+                  placeholder="t.ex. 12 34 56-7"
+                />
+              </div>
+            )}
+
+            {formData.payment_type === PaymentType.BANK_ACCOUNT && (
+              <>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">
+                    Clearingnummer
+                  </label>
+                  <input
+                    type="text"
+                    value={formData.clearing_number}
+                    onChange={(e) => setFormData({ ...formData, clearing_number: e.target.value })}
+                    className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500"
+                    placeholder="t.ex. 1234"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">
+                    Kontonummer
+                  </label>
+                  <input
+                    type="text"
+                    value={formData.account_number}
+                    onChange={(e) => setFormData({ ...formData, account_number: e.target.value })}
+                    className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500"
+                    placeholder="t.ex. 12 345 67"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">
+                    IBAN <span className="text-gray-400 text-xs">(valfritt)</span>
+                  </label>
+                  <input
+                    type="text"
+                    value={formData.iban}
+                    onChange={(e) => setFormData({ ...formData, iban: e.target.value })}
+                    className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500"
+                    placeholder="t.ex. SE12 3456 7890 1234 5678 9012"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">
+                    BIC/SWIFT <span className="text-gray-400 text-xs">(valfritt)</span>
+                  </label>
+                  <input
+                    type="text"
+                    value={formData.bic}
+                    onChange={(e) => setFormData({ ...formData, bic: e.target.value })}
+                    className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500"
+                    placeholder="t.ex. NDEASESS"
+                  />
+                </div>
+              </>
+            )}
           </div>
 
           <div className="flex justify-end gap-3">

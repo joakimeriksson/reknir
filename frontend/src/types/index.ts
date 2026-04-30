@@ -270,8 +270,13 @@ export interface Supplier {
   city?: string
   country: string
   payment_terms_days: number
-  bank_account?: string
-  bank_name?: string
+  payment_type?: PaymentType | null
+  bankgiro_number?: string | null
+  plusgiro_number?: string | null
+  clearing_number?: string | null
+  account_number?: string | null
+  iban?: string | null
+  bic?: string | null
   active: boolean
 }
 

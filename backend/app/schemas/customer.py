@@ -1,5 +1,7 @@
 from pydantic import BaseModel, ConfigDict, EmailStr, Field
 
+from app.models.company import PaymentType
+
 
 class CustomerBase(BaseModel):
     """Base customer schema"""
@@ -61,8 +63,13 @@ class SupplierBase(BaseModel):
     city: str | None = None
     country: str = "Sverige"
     payment_terms_days: int = Field(30, ge=0, le=365)
-    bank_account: str | None = None
-    bank_name: str | None = None
+    payment_type: PaymentType | None = None
+    bankgiro_number: str | None = None
+    plusgiro_number: str | None = None
+    clearing_number: str | None = None
+    account_number: str | None = None
+    iban: str | None = None
+    bic: str | None = None
 
 
 class SupplierCreate(SupplierBase):
@@ -84,8 +91,13 @@ class SupplierUpdate(BaseModel):
     city: str | None = None
     country: str | None = None
     payment_terms_days: int | None = None
-    bank_account: str | None = None
-    bank_name: str | None = None
+    payment_type: PaymentType | None = None
+    bankgiro_number: str | None = None
+    plusgiro_number: str | None = None
+    clearing_number: str | None = None
+    account_number: str | None = None
+    iban: str | None = None
+    bic: str | None = None
     active: bool | None = None
 
 

@@ -1,7 +1,9 @@
 from sqlalchemy import Boolean, Column, ForeignKey, Integer, String
+from sqlalchemy import Enum as SQLEnum
 from sqlalchemy.orm import relationship
 
 from app.database import Base
+from app.models.company import PaymentType
 
 
 class Customer(Base):
@@ -63,9 +65,17 @@ class Supplier(Base):
     # Payment terms
     payment_terms_days = Column(Integer, default=30, nullable=False)
 
-    # Bank details
-    bank_account = Column(String, nullable=True)  # Bankgiro or account number
-    bank_name = Column(String, nullable=True)
+    # Payment information
+    payment_type = Column(
+        SQLEnum(PaymentType, values_callable=lambda x: [e.value for e in x]),
+        nullable=True,
+    )
+    bankgiro_number = Column(String(20), nullable=True)
+    plusgiro_number = Column(String(20), nullable=True)
+    clearing_number = Column(String(10), nullable=True)
+    account_number = Column(String(20), nullable=True)
+    iban = Column(String(34), nullable=True)
+    bic = Column(String(11), nullable=True)
 
     # Status
     active = Column(Boolean, default=True, nullable=False)
