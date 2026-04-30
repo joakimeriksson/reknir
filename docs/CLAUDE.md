@@ -275,6 +275,7 @@ Kredit: 1930 Bankkonto              [Belopp]
 ### 6. Kunder & Leverantörer
 - Hantering av kundregister
 - Hantering av leverantörsregister
+- Leverantörers betalningsuppgifter (bankgiro, plusgiro, bankkonto med clearing/kontonummer, IBAN/BIC)
 - Koppling till fakturor
 
 ### 7. Momsrapportering
@@ -566,6 +567,7 @@ Systemet använder default accounts för automatisk bokföring:
 - `AccountType`: asset, liability, equity, revenue, expense
 - `AccountingBasis`: accrual, cash
 - `VATReportingPeriod`: monthly, quarterly, yearly
+- `PaymentType`: bankgiro, plusgiro, bank_account
 
 ## Utveckling
 
