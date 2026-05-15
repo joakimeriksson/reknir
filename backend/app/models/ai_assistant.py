@@ -35,7 +35,9 @@ class ChatSession(Base):
     created_at = Column(DateTime(timezone=True), nullable=False, default=datetime.utcnow)
     updated_at = Column(DateTime(timezone=True), nullable=False, default=datetime.utcnow, onupdate=datetime.utcnow)
 
-    messages = relationship("ChatMessage", back_populates="session", cascade="all, delete-orphan", order_by="ChatMessage.id")
+    messages = relationship(
+        "ChatMessage", back_populates="session", cascade="all, delete-orphan", order_by="ChatMessage.id"
+    )
     user = relationship("User", foreign_keys=[user_id])
     company = relationship("Company", foreign_keys=[company_id])
 

@@ -149,10 +149,14 @@ async def stream_chat_response(
 
     # Get or create session
     if session_id:
-        session = db.query(ChatSession).filter(
-            ChatSession.id == session_id,
-            ChatSession.user_id == user.id,
-        ).first()
+        session = (
+            db.query(ChatSession)
+            .filter(
+                ChatSession.id == session_id,
+                ChatSession.user_id == user.id,
+            )
+            .first()
+        )
         if not session:
             yield _sse_event("error", {"message": "Sessionen hittades inte."})
             return
@@ -164,11 +168,15 @@ async def stream_chat_response(
         db.refresh(session)
 
     # Block new messages if there's a pending tool approval
-    pending = db.query(ChatMessage).filter(
-        ChatMessage.session_id == session.id,
-        ChatMessage.role == "tool_call",
-        ChatMessage.tool_status == "pending",
-    ).first()
+    pending = (
+        db.query(ChatMessage)
+        .filter(
+            ChatMessage.session_id == session.id,
+            ChatMessage.role == "tool_call",
+            ChatMessage.tool_status == "pending",
+        )
+        .first()
+    )
     if pending:
         yield _sse_event("error", {"message": "Det finns en väntande åtgärd som måste godkännas eller avvisas först."})
         return
@@ -195,9 +203,7 @@ async def stream_chat_response(
     if images:
         yield _sse_event("image_extracting", {})
         try:
-            extraction_text = await _extract_image_content(
-                settings.ollama_url, settings.ollama_model, images
-            )
+            extraction_text = await _extract_image_content(settings.ollama_url, settings.ollama_model, images)
             if extraction_text.strip():
                 extraction_msg = ChatMessage(
                     session_id=session.id,
@@ -214,10 +220,7 @@ async def stream_chat_response(
     from app.models.fiscal_year import FiscalYear
 
     fiscal_year = (
-        db.query(FiscalYear)
-        .filter(FiscalYear.company_id == company_id)
-        .order_by(FiscalYear.year.desc())
-        .first()
+        db.query(FiscalYear).filter(FiscalYear.company_id == company_id).order_by(FiscalYear.year.desc()).first()
     )
     fiscal_year_id = fiscal_year.id if fiscal_year else None
 
@@ -277,9 +280,7 @@ async def _tool_loop(
         full_content = ""
         tool_calls = []
 
-        async for chunk in chat_stream(
-            settings.ollama_url, settings.ollama_model, ollama_messages, tools
-        ):
+        async for chunk in chat_stream(settings.ollama_url, settings.ollama_model, ollama_messages, tools):
             # Check for tool calls
             if chunk.get("message", {}).get("tool_calls"):
                 tool_calls = chunk["message"]["tool_calls"]
@@ -304,10 +305,13 @@ async def _tool_loop(
 
                 if is_read_tool(tool_name):
                     # Execute read tool directly
-                    yield _sse_event("tool_executing", {
-                        "tool_name": tool_name,
-                        "display_name": get_display_name(tool_name),
-                    })
+                    yield _sse_event(
+                        "tool_executing",
+                        {
+                            "tool_name": tool_name,
+                            "display_name": get_display_name(tool_name),
+                        },
+                    )
 
                     result = await execute_tool(api_client, tool_name, tool_args, company_id, fiscal_year_id)
                     result_str = json.dumps(result, ensure_ascii=False, default=str)
@@ -330,22 +334,29 @@ async def _tool_loop(
                     db.add(tr_msg)
                     db.commit()
 
-                    yield _sse_event("tool_result", {
-                        "tool_name": tool_name,
-                        "display_name": get_display_name(tool_name),
-                        "result": result,
-                    })
+                    yield _sse_event(
+                        "tool_result",
+                        {
+                            "tool_name": tool_name,
+                            "display_name": get_display_name(tool_name),
+                            "result": result,
+                        },
+                    )
 
                     # Add to ollama messages for next round
-                    ollama_messages.append({
-                        "role": "assistant",
-                        "content": "",
-                        "tool_calls": [tc],
-                    })
-                    ollama_messages.append({
-                        "role": "tool",
-                        "content": result_str,
-                    })
+                    ollama_messages.append(
+                        {
+                            "role": "assistant",
+                            "content": "",
+                            "tool_calls": [tc],
+                        }
+                    )
+                    ollama_messages.append(
+                        {
+                            "role": "tool",
+                            "content": result_str,
+                        }
+                    )
 
                 elif is_write_tool(tool_name):
                     # Save proposal and wait for approval
@@ -369,14 +380,17 @@ async def _tool_loop(
                                 pass
                             break
 
-                    yield _sse_event("tool_proposal", {
-                        "message_id": tc_msg.id,
-                        "tool_name": tool_name,
-                        "display_name": get_display_name(tool_name),
-                        "tool_args": tool_args,
-                        "round": round_num,
-                        "ai_upload_ids": ai_upload_ids,
-                    })
+                    yield _sse_event(
+                        "tool_proposal",
+                        {
+                            "message_id": tc_msg.id,
+                            "tool_name": tool_name,
+                            "display_name": get_display_name(tool_name),
+                            "tool_args": tool_args,
+                            "round": round_num,
+                            "ai_upload_ids": ai_upload_ids,
+                        },
+                    )
                     # Stop the loop — wait for approval
                     return
 
@@ -412,20 +426,28 @@ async def approve_tool(
     """Handle tool approval/denial and continue the tool loop if approved."""
     settings = _get_settings(db)
 
-    session = db.query(ChatSession).filter(
-        ChatSession.id == session_id,
-        ChatSession.user_id == user.id,
-    ).first()
+    session = (
+        db.query(ChatSession)
+        .filter(
+            ChatSession.id == session_id,
+            ChatSession.user_id == user.id,
+        )
+        .first()
+    )
     if not session:
         yield _sse_event("error", {"message": "Sessionen hittades inte."})
         return
 
-    tc_msg = db.query(ChatMessage).filter(
-        ChatMessage.id == message_id,
-        ChatMessage.session_id == session_id,
-        ChatMessage.role == "tool_call",
-        ChatMessage.tool_status == "pending",
-    ).first()
+    tc_msg = (
+        db.query(ChatMessage)
+        .filter(
+            ChatMessage.id == message_id,
+            ChatMessage.session_id == session_id,
+            ChatMessage.role == "tool_call",
+            ChatMessage.tool_status == "pending",
+        )
+        .first()
+    )
     if not tc_msg:
         yield _sse_event("error", {"message": "Verktygsförslaget hittades inte."})
         return
@@ -458,10 +480,7 @@ async def approve_tool(
     from app.models.fiscal_year import FiscalYear
 
     fiscal_year = (
-        db.query(FiscalYear)
-        .filter(FiscalYear.company_id == company_id)
-        .order_by(FiscalYear.year.desc())
-        .first()
+        db.query(FiscalYear).filter(FiscalYear.company_id == company_id).order_by(FiscalYear.year.desc()).first()
     )
     fiscal_year_id = fiscal_year.id if fiscal_year else None
 
@@ -478,11 +497,14 @@ async def approve_tool(
     db.add(tr_msg)
     db.commit()
 
-    yield _sse_event("tool_status", {
-        "status": tc_msg.tool_status,
-        "message_id": message_id,
-        "result": result,
-    })
+    yield _sse_event(
+        "tool_status",
+        {
+            "status": tc_msg.tool_status,
+            "message_id": message_id,
+            "result": result,
+        },
+    )
 
     # Build message history and continue the tool loop
     system_prompt = build_system_prompt(settings.system_prompt)
@@ -491,9 +513,7 @@ async def approve_tool(
 
     # Resume from next round (we don't track round in DB, so count tool_call messages)
     tool_call_count = (
-        db.query(ChatMessage)
-        .filter(ChatMessage.session_id == session_id, ChatMessage.role == "tool_call")
-        .count()
+        db.query(ChatMessage).filter(ChatMessage.session_id == session_id, ChatMessage.role == "tool_call").count()
     )
     resume_round = min(tool_call_count, MAX_TOOL_ROUNDS - 1)
 

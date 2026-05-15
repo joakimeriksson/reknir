@@ -37,9 +37,7 @@ class AIAPIClient:
     async def list_fiscal_years(self, company_id: int) -> list:
         return await self._get("/api/fiscal-years/", params={"company_id": company_id})
 
-    async def list_accounts(
-        self, company_id: int, fiscal_year_id: int, account_type: str | None = None
-    ) -> list:
+    async def list_accounts(self, company_id: int, fiscal_year_id: int, account_type: str | None = None) -> list:
         params = {"company_id": company_id, "fiscal_year_id": fiscal_year_id}
         if account_type:
             params["account_type"] = account_type
@@ -52,7 +50,11 @@ class AIAPIClient:
         return await self._get(f"/api/accounts/{account_id}/ledger", params=params)
 
     async def list_verifications(
-        self, company_id: int, fiscal_year_id: int | None = None, start_date: str | None = None, end_date: str | None = None
+        self,
+        company_id: int,
+        fiscal_year_id: int | None = None,
+        start_date: str | None = None,
+        end_date: str | None = None,
     ) -> list:
         params = {"company_id": company_id}
         if fiscal_year_id:

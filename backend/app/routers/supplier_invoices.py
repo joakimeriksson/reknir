@@ -35,9 +35,7 @@ from app.services.invoice_service import (
 router = APIRouter()
 
 
-def _propagate_invoice_attachments_to_verification(
-    db: Session, invoice_id: int, verification_id: int
-) -> None:
+def _propagate_invoice_attachments_to_verification(db: Session, invoice_id: int, verification_id: int) -> None:
     invoice_links = (
         db.query(AttachmentLink)
         .filter(

@@ -304,10 +304,14 @@ async def get_session(
     current_user: User = Depends(get_current_active_user),
     db: Session = Depends(get_db),
 ):
-    session = db.query(ChatSession).filter(
-        ChatSession.id == session_id,
-        ChatSession.user_id == current_user.id,
-    ).first()
+    session = (
+        db.query(ChatSession)
+        .filter(
+            ChatSession.id == session_id,
+            ChatSession.user_id == current_user.id,
+        )
+        .first()
+    )
     if not session:
         raise HTTPException(status_code=404, detail="Session not found")
     return session
@@ -319,10 +323,14 @@ async def delete_session(
     current_user: User = Depends(get_current_active_user),
     db: Session = Depends(get_db),
 ):
-    session = db.query(ChatSession).filter(
-        ChatSession.id == session_id,
-        ChatSession.user_id == current_user.id,
-    ).first()
+    session = (
+        db.query(ChatSession)
+        .filter(
+            ChatSession.id == session_id,
+            ChatSession.user_id == current_user.id,
+        )
+        .first()
+    )
     if not session:
         raise HTTPException(status_code=404, detail="Session not found")
 

@@ -65,7 +65,7 @@ export default function SettingsPage() {
   const [editingCompany, setEditingCompany] = useState(false)
   const [showCreateCompany, setShowCreateCompany] = useState(false)
   // AI settings state
-  const [aiSettings, setAiSettings] = useState<AISettings | null>(null)
+  const [, setAiSettings] = useState<AISettings | null>(null)
   const [aiModels, setAiModels] = useState<OllamaModel[]>([])
   const [aiHealth, setAiHealth] = useState<OllamaHealth | null>(null)
   const [aiLoading, setAiLoading] = useState(false)

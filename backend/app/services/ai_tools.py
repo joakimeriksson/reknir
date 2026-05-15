@@ -378,11 +378,22 @@ TOOL_DEFINITIONS = [
                     "address": {"type": "string", "description": "Gatuadress"},
                     "postal_code": {"type": "string", "description": "Postnummer"},
                     "city": {"type": "string", "description": "Stad"},
-                    "payment_terms_days": {"type": "integer", "description": "Betalningsvillkor i dagar", "default": 30},
-                    "payment_type": {"type": "string", "enum": ["bankgiro", "plusgiro", "bank_account"], "description": "Betalningstyp"},
+                    "payment_terms_days": {
+                        "type": "integer",
+                        "description": "Betalningsvillkor i dagar",
+                        "default": 30,
+                    },
+                    "payment_type": {
+                        "type": "string",
+                        "enum": ["bankgiro", "plusgiro", "bank_account"],
+                        "description": "Betalningstyp",
+                    },
                     "bankgiro_number": {"type": "string", "description": "Bankgironummer (om payment_type=bankgiro)"},
                     "plusgiro_number": {"type": "string", "description": "Plusgironummer (om payment_type=plusgiro)"},
-                    "clearing_number": {"type": "string", "description": "Clearingnummer (om payment_type=bank_account)"},
+                    "clearing_number": {
+                        "type": "string",
+                        "description": "Clearingnummer (om payment_type=bank_account)",
+                    },
                     "account_number": {"type": "string", "description": "Kontonummer (om payment_type=bank_account)"},
                     "iban": {"type": "string", "description": "IBAN (internationellt kontonummer)"},
                     "bic": {"type": "string", "description": "BIC/SWIFT-kod"},
@@ -406,7 +417,11 @@ TOOL_DEFINITIONS = [
                     "address": {"type": "string", "description": "Adress"},
                     "postal_code": {"type": "string", "description": "Postnummer"},
                     "city": {"type": "string", "description": "Stad"},
-                    "payment_terms_days": {"type": "integer", "description": "Betalningsvillkor i dagar", "default": 30},
+                    "payment_terms_days": {
+                        "type": "integer",
+                        "description": "Betalningsvillkor i dagar",
+                        "default": 30,
+                    },
                 },
                 "required": ["name"],
             },
@@ -614,7 +629,9 @@ async def _dispatch_tool(
     elif tool_name == "get_account_ledger":
         return await api_client.get_account_ledger(args["account_id"], fiscal_year_id)
     elif tool_name == "list_verifications":
-        return await api_client.list_verifications(company_id, fiscal_year_id, args.get("start_date"), args.get("end_date"))
+        return await api_client.list_verifications(
+            company_id, fiscal_year_id, args.get("start_date"), args.get("end_date")
+        )
     elif tool_name == "get_verification":
         return await api_client.get_verification(args["verification_id"])
     elif tool_name == "list_suppliers":
@@ -668,9 +685,14 @@ async def _dispatch_tool(
         if "account_type" not in args and "account_number" in args:
             num = int(args["account_number"])
             type_map = {
-                1: "asset", 2: "equity_liability", 3: "revenue",
-                4: "cost_goods", 5: "cost_local", 6: "cost_other",
-                7: "cost_personnel", 8: "cost_misc",
+                1: "asset",
+                2: "equity_liability",
+                3: "revenue",
+                4: "cost_goods",
+                5: "cost_local",
+                6: "cost_other",
+                7: "cost_personnel",
+                8: "cost_misc",
             }
             args["account_type"] = type_map.get(num // 1000, "cost_other")
         data = {**args, "company_id": company_id, "fiscal_year_id": fiscal_year_id}
