@@ -254,10 +254,13 @@ export default function ChatPanel({ isOpen, onClose }: ChatPanelProps) {
           </div>
         )}
 
-        {messages.map((msg, idx) => {
-          // Determine if this is the last tool_call step before a non-tool message
+        {messages.filter((msg) => {
+          if (msg.role !== 'tool_call') return true
+          // Hide tool_call if a matching tool_result exists (avoid duplicates on reload)
+          return !messages.some((m) => m.role === 'tool_result' && m.tool_name === msg.tool_name && m.id > msg.id)
+        }).map((msg, idx, filtered) => {
           const isToolStep = msg.role === 'tool_call' || msg.role === 'tool_result'
-          const nextMsg = messages[idx + 1]
+          const nextMsg = filtered[idx + 1]
           const isLastToolStep = isToolStep && (!nextMsg || (nextMsg.role !== 'tool_call' && nextMsg.role !== 'tool_result'))
 
           return (

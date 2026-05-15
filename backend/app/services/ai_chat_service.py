@@ -31,16 +31,22 @@ Svara ENBART med den extraherade informationen i punktform.
 Inkludera (om synligt):
 - Leverantör / företagsnamn
 - Organisationsnummer
+- Kontaktperson
+- Adress (gatuadress, postnummer, stad)
+- Telefonnummer
+- E-postadress
 - Fakturanummer
 - Fakturadatum
 - Förfallodatum
+- Betalningsvillkor (antal dagar)
 - Belopp exkl. moms
 - Moms (belopp och procentsats)
 - Totalbelopp inkl. moms
 - Betalningsreferens / OCR-nummer
-- Bankgiro / plusgiro / kontonummer
+- Bankgiro / plusgiro / kontonummer (inklusive clearingnummer)
+- IBAN
+- BIC / SWIFT-kod
 - Enskilda rader/poster: beskrivning, antal, enhetspris, momssats och radbelopp per rad
-- Övrig relevant information (adress, telefon, e-post, etc.)
 """
 
 
