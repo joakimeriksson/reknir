@@ -1,4 +1,5 @@
 from app.models.account import Account
+from app.models.ai_assistant import AISettings, AIUpload, ChatMessage, ChatSession
 from app.models.backup_schedule import BackupSchedule
 from app.models.company import Company
 from app.models.customer import Customer, Supplier
@@ -13,6 +14,10 @@ from app.models.verification import TransactionLine, Verification
 
 __all__ = [
     "Account",
+    "AISettings",
+    "AIUpload",
+    "ChatMessage",
+    "ChatSession",
     "BackupSchedule",
     "Verification",
     "TransactionLine",

@@ -88,27 +88,17 @@ async def get_month_verifications(
             elif line.account_id in expense_account_ids:
                 expense_amount += (line.debit or Decimal(0)) - (line.credit or Decimal(0))
 
-        # Only include if it affects revenue or expenses
-        if revenue_amount != 0 or expense_amount != 0:
-            # Determine primary type based on which is larger
-            if abs(revenue_amount) > abs(expense_amount):
-                verification_type = "revenue"
-                amount = float(revenue_amount)
-            else:
-                verification_type = "expense"
-                amount = float(expense_amount)
-
-            result.append(
-                {
-                    "id": verification.id,
-                    "verification_number": verification.verification_number,
-                    "series": verification.series,
-                    "transaction_date": verification.transaction_date.isoformat(),
-                    "description": verification.description,
-                    "amount": amount,
-                    "type": verification_type,
-                }
-            )
+        base = {
+            "id": verification.id,
+            "verification_number": verification.verification_number,
+            "series": verification.series,
+            "transaction_date": verification.transaction_date.isoformat(),
+            "description": verification.description,
+        }
+        if revenue_amount != 0:
+            result.append({**base, "amount": float(revenue_amount), "type": "revenue"})
+        if expense_amount != 0:
+            result.append({**base, "amount": float(expense_amount), "type": "expense"})
 
     return result
 

@@ -8,6 +8,7 @@ from app import __version__
 from app.config import settings
 from app.routers import (
     accounts,
+    ai_assistant,
     attachments,
     auth,
     backup,
@@ -96,6 +97,9 @@ app.include_router(default_accounts.router)
 
 # Backup and restore
 app.include_router(backup.router, prefix="/api/backup", tags=["backup"])
+
+# AI assistant
+app.include_router(ai_assistant.router, prefix="/api/ai", tags=["ai-assistant"])
 
 
 @app.get("/")

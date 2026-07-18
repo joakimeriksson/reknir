@@ -119,6 +119,12 @@
   - Betalningsbekräftelser
 
 ### 2.3 OCR & AI
+- [x] **AI-assistent med Ollama** (v1.3.4)
+  - Chattbaserad bokföringsassistent med lokal LLM
+  - Läser och analyserar bokföringsdata via verktyg
+  - Föreslår konteringar och öppnar formulär med förpopulerade fält
+  - Admin-konfigurerbar (modellval, systemprompt)
+
 - [ ] **OCR för leverantörsfakturor**
   - Automatisk läsning av fakturor
   - Extrahera belopp, datum, leverantör
@@ -431,6 +437,6 @@
 
 ---
 
-**Senast uppdaterad:** 2026-02-13
-**Version:** 1.3.2 (under utveckling)
+**Senast uppdaterad:** 2026-04-14
+**Version:** 1.3.4
 **Status:** Funktionell MVP - lämplig för testning och utveckling, ej för produktionsdrift ännu

@@ -1,7 +1,7 @@
 import { useEffect, useState, useCallback } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { Plus, Edit, Trash2, CheckCircle } from 'lucide-react'
-import { verificationApi, accountApi } from '@/services/api'
+import { verificationApi, accountApi, aiApi } from '@/services/api'
 import type { VerificationListItem, Account, Verification, EntityAttachment } from '@/types'
 import { useFiscalYear } from '@/contexts/FiscalYearContext'
 import { useCompany } from '@/contexts/CompanyContext'
@@ -14,6 +14,8 @@ import { useAttachmentPreviewController } from '@/hooks/useAttachmentPreviewCont
 import { useSortableTable } from '@/hooks/useSortableTable'
 import SortableHeader from '@/components/SortableHeader'
 import { useToast } from '@/contexts/ToastContext'
+import { useAIForm } from '@/contexts/AIFormContext'
+import type { VerificationInitialData } from '@/components/forms/VerificationForm'
 
 export default function Verifications() {
   const navigate = useNavigate()
@@ -25,6 +27,36 @@ export default function Verifications() {
   const [showCreateModal, setShowCreateModal] = useState(false)
   const [editingVerification, setEditingVerification] = useState<Verification | null>(null)
   const { selectedFiscalYear } = useFiscalYear()
+  const { pendingForm, clearForm } = useAIForm()
+  const [verificationInitialData, setVerificationInitialData] = useState<VerificationInitialData | undefined>()
+
+  useEffect(() => {
+    if (pendingForm?.type === 'verification') {
+      const d = pendingForm.data
+      const uploadIds = pendingForm.aiUploadIds || []
+      clearForm()
+
+      const open = async () => {
+        const attachmentIds: number[] = []
+        for (const uploadId of uploadIds) {
+          try {
+            const resp = await aiApi.copyToAttachment(uploadId)
+            attachmentIds.push(resp.data.id)
+          } catch { /* ignore */ }
+        }
+        setVerificationInitialData({
+          description: d.description as string,
+          transaction_date: d.transaction_date as string,
+          series: d.series as string,
+          lines: d.lines as Partial<import('@/types').TransactionLine>[],
+          pendingAttachmentIds: attachmentIds.length > 0 ? attachmentIds : undefined,
+        })
+        setPendingAttachmentIds(attachmentIds)
+        setShowCreateModal(true)
+      }
+      open()
+    }
+  }, [pendingForm, clearForm])
 
   // Search and filter state
   const [searchQuery, setSearchQuery] = useState('')
@@ -316,6 +348,7 @@ export default function Verifications() {
             fiscalYearId={selectedFiscalYear.id}
             accounts={accounts}
             verification={editingVerification}
+            initialData={verificationInitialData}
             onSuccess={() => {
               resetPreview()
               setFormAttachments([])
@@ -323,6 +356,7 @@ export default function Verifications() {
               setShowCreateModal(false)
               const wasEditing = !!editingVerification
               setEditingVerification(null)
+              setVerificationInitialData(undefined)
               loadData()
               showToast(wasEditing ? 'Verifikation uppdaterad' : 'Verifikation skapad', 'success')
             }}
@@ -332,6 +366,7 @@ export default function Verifications() {
               setPendingAttachmentIds([])
               setShowCreateModal(false)
               setEditingVerification(null)
+              setVerificationInitialData(undefined)
             }}
             onAttachmentsChange={setFormAttachments}
             onAttachmentClick={(_, index) => openPreview(index)}

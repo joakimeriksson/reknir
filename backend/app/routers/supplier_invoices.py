@@ -7,7 +7,7 @@ from sqlalchemy.orm import Session
 
 from app.database import get_db
 from app.dependencies import get_current_active_user, verify_company_access
-from app.models.attachment import Attachment, AttachmentLink, EntityType
+from app.models.attachment import Attachment, AttachmentLink, AttachmentRole, EntityType
 from app.models.company import AccountingBasis, Company
 from app.models.customer import Supplier
 from app.models.fiscal_year import FiscalYear
@@ -33,6 +33,27 @@ from app.services.invoice_service import (
 )
 
 router = APIRouter()
+
+
+def _propagate_invoice_attachments_to_verification(db: Session, invoice_id: int, verification_id: int) -> None:
+    invoice_links = (
+        db.query(AttachmentLink)
+        .filter(
+            AttachmentLink.entity_type == EntityType.SUPPLIER_INVOICE,
+            AttachmentLink.entity_id == invoice_id,
+        )
+        .all()
+    )
+    for link in invoice_links:
+        db.add(
+            AttachmentLink(
+                attachment_id=link.attachment_id,
+                entity_type=EntityType.VERIFICATION,
+                entity_id=verification_id,
+                role=AttachmentRole.ORIGINAL,
+                sort_order=link.sort_order,
+            )
+        )
 
 
 @router.post("/", response_model=SupplierInvoiceResponse, status_code=status.HTTP_201_CREATED)
@@ -242,6 +263,7 @@ async def register_supplier_invoice(
     if company.accounting_basis == AccountingBasis.ACCRUAL:
         verification = create_supplier_invoice_verification(db, invoice)
         invoice.invoice_verification_id = verification.id
+        _propagate_invoice_attachments_to_verification(db, invoice.id, verification.id)
 
     # Update invoice status
     invoice.status = InvoiceStatus.ISSUED  # Registered/posted
@@ -293,6 +315,7 @@ async def mark_supplier_invoice_paid(
             # Accrual: Create invoice verification first
             verification = create_supplier_invoice_verification(db, invoice)
             invoice.invoice_verification_id = verification.id
+            _propagate_invoice_attachments_to_verification(db, invoice.id, verification.id)
         # Cash method: Just update status, no verification needed
         invoice.status = InvoiceStatus.ISSUED
 
@@ -303,6 +326,9 @@ async def mark_supplier_invoice_paid(
     payment_verification = create_supplier_invoice_payment_verification(
         db, invoice, payment.paid_date, paid_amount, payment.bank_account_id, company.accounting_basis
     )
+
+    if company.accounting_basis == AccountingBasis.CASH:
+        _propagate_invoice_attachments_to_verification(db, invoice.id, payment_verification.id)
 
     # Create payment record for history
     supplier_payment = SupplierInvoicePayment(

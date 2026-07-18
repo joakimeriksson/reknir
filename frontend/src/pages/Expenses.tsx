@@ -11,6 +11,7 @@ import { useDropZone } from '@/hooks/useDropZone'
 import { useSortableTable } from '@/hooks/useSortableTable'
 import SortableHeader from '@/components/SortableHeader'
 import { useToast } from '@/contexts/ToastContext'
+import { useAIForm } from '@/contexts/AIFormContext'
 
 // Receipt drop zone component for inline table cell
 function ReceiptDropZone({
@@ -110,6 +111,25 @@ export default function Expenses() {
   const [statusFilter, setStatusFilter] = useState<string>('all')
   const [employeeFilter, setEmployeeFilter] = useState('')
   const [selectedFile, setSelectedFile] = useState<File | null>(null)
+  const { pendingForm, clearForm } = useAIForm()
+
+  useEffect(() => {
+    if (pendingForm?.type === 'expense') {
+      const d = pendingForm.data
+      setFormData({
+        employee_name: (d.employee_name as string) || '',
+        expense_date: (d.expense_date as string) || new Date().toISOString().split('T')[0],
+        description: (d.description as string) || '',
+        amount: d.amount != null ? String(d.amount) : '',
+        vat_amount: d.vat_amount != null ? String(d.vat_amount) : '',
+        expense_account_id: d.expense_account_id != null ? String(d.expense_account_id) : '',
+        vat_account_id: '',
+      })
+      setEditingExpense(null)
+      setShowModal(true)
+      clearForm()
+    }
+  }, [pendingForm, clearForm])
 
   // Form state
   const [formData, setFormData] = useState({

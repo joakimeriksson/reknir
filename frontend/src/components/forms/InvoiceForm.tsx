@@ -8,12 +8,23 @@ import { getErrorMessage } from '@/utils/errors'
 // Types & Interfaces
 // ============================================================================
 
+export interface InvoiceInitialData {
+  customerId?: number
+  invoiceDate?: string
+  dueDate?: string
+  reference?: string
+  ourReference?: string
+  message?: string
+  lines?: Partial<InvoiceLine>[]
+}
+
 export interface InvoiceFormProps {
   companyId: number
   customers: Customer[]
   accounts: Account[]
   onSuccess: () => void
   onCancel: () => void
+  initialData?: InvoiceInitialData
   renderFooter?: (props: {
     onSubmit: () => void
     onCancel: () => void
@@ -54,17 +65,27 @@ export default function InvoiceForm({
   accounts,
   onSuccess,
   onCancel,
+  initialData,
   renderFooter,
 }: InvoiceFormProps) {
-  const [customerId, setCustomerId] = useState<number>(0)
-  const [invoiceDate, setInvoiceDate] = useState(new Date().toISOString().split('T')[0])
-  const [dueDate, setDueDate] = useState('')
-  const [reference, setReference] = useState('')
-  const [ourReference, setOurReference] = useState('')
-  const [message, setMessage] = useState('')
-  const [lines, setLines] = useState<InvoiceLine[]>([
-    { description: '', quantity: 1, unit: 'st', unit_price: 0, vat_rate: 25 }
-  ])
+  const [customerId, setCustomerId] = useState<number>(initialData?.customerId || 0)
+  const [invoiceDate, setInvoiceDate] = useState(initialData?.invoiceDate || new Date().toISOString().split('T')[0])
+  const [dueDate, setDueDate] = useState(initialData?.dueDate || '')
+  const [reference, setReference] = useState(initialData?.reference || '')
+  const [ourReference, setOurReference] = useState(initialData?.ourReference || '')
+  const [message, setMessage] = useState(initialData?.message || '')
+  const [lines, setLines] = useState<InvoiceLine[]>(
+    initialData?.lines?.length
+      ? initialData.lines.map(l => ({
+          description: l.description || '',
+          quantity: l.quantity || 1,
+          unit: l.unit || 'st',
+          unit_price: l.unit_price || 0,
+          vat_rate: l.vat_rate ?? 25,
+          account_id: l.account_id,
+        }))
+      : [{ description: '', quantity: 1, unit: 'st', unit_price: 0, vat_rate: 25 }]
+  )
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
 

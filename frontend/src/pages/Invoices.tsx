@@ -10,6 +10,8 @@ import type { InvoiceListItem, SupplierInvoiceListItem, Customer, Supplier, Acco
 import { InvoiceStatus, PaymentStatus } from '@/types'
 import { getErrorMessage } from '@/utils/errors'
 import { useCompany } from '@/contexts/CompanyContext'
+import { useAIForm } from '@/contexts/AIFormContext'
+import { aiApi } from '@/services/api'
 import { useFiscalYear } from '@/contexts/FiscalYearContext'
 import FiscalYearSelector from '@/components/FiscalYearSelector'
 import { useAttachmentPreviewController } from '@/hooks/useAttachmentPreviewController'
@@ -57,6 +59,55 @@ export default function Invoices() {
   const [paymentError, setPaymentError] = useState<string | null>(null)
   const [payingInvoice, setPayingInvoice] = useState(false)
   const [payingSupplierInvoice, setPayingSupplierInvoice] = useState(false)
+
+  // AI form integration
+  const { pendingForm, clearForm } = useAIForm()
+  const [invoiceInitialData, setInvoiceInitialData] = useState<Record<string, unknown> | undefined>()
+  const [supplierInvoiceInitialData, setSupplierInvoiceInitialData] = useState<Record<string, unknown> | undefined>()
+
+  useEffect(() => {
+    if (!pendingForm) return
+    if (pendingForm.type === 'invoice') {
+      const d = pendingForm.data
+      setInvoiceInitialData({
+        customerId: d.customer_id,
+        invoiceDate: d.invoice_date,
+        dueDate: d.due_date,
+        reference: d.reference,
+        ourReference: d.our_reference,
+        message: d.message,
+        lines: d.lines,
+      })
+      setShowCreateInvoiceModal(true)
+      clearForm()
+    } else if (pendingForm.type === 'supplier_invoice') {
+      const d = pendingForm.data
+      const uploadIds = pendingForm.aiUploadIds || []
+      clearForm()
+
+      const copyUploads = async () => {
+        const attachmentIds: number[] = []
+        for (const uploadId of uploadIds) {
+          try {
+            const resp = await aiApi.copyToAttachment(uploadId)
+            attachmentIds.push(resp.data.id)
+          } catch { /* ignore */ }
+        }
+        setSupplierInvoiceInitialData({
+          supplierId: d.supplier_id,
+          supplierInvoiceNumber: d.supplier_invoice_number,
+          invoiceDate: d.invoice_date,
+          dueDate: d.due_date,
+          ocrNumber: d.ocr_number,
+          reference: d.reference,
+          lines: d.lines,
+          pendingAttachmentIds: attachmentIds,
+        })
+        setShowCreateSupplierInvoiceModal(true)
+      }
+      copyUploads()
+    }
+  }, [pendingForm, clearForm])
 
   // Filter states
   const [invoiceFilter, setInvoiceFilter] = useState<string>('all')
@@ -170,7 +221,9 @@ export default function Invoices() {
       setConfirmRegisterSupplierInvoice(null)
     } catch (error) {
       console.error('Failed to register supplier invoice:', error)
-      showToast('Kunde inte bokföra leverantörsfakturan', 'error')
+      showToast(selectedCompany?.accounting_basis === 'accrual'
+        ? 'Kunde inte bokföra leverantörsfakturan'
+        : 'Kunde inte registrera leverantörsfakturan', 'error')
     } finally {
       setRegisteringSupplierInvoice(false)
     }
@@ -579,9 +632,9 @@ export default function Invoices() {
                               setConfirmRegisterSupplierInvoice(invoice)
                             }}
                             className="inline-flex items-center px-3 py-1 text-sm bg-primary-600 text-white rounded hover:bg-primary-700"
-                            title="Bokför faktura"
+                            title={selectedCompany?.accounting_basis === 'accrual' ? 'Bokför faktura' : 'Registrera faktura'}
                           >
-                            Bokför
+                            {selectedCompany?.accounting_basis === 'accrual' ? 'Bokför' : 'Registrera'}
                           </button>
                         )}
                         {invoice.status === InvoiceStatus.ISSUED && invoice.payment_status !== PaymentStatus.PAID && (
@@ -625,11 +678,16 @@ export default function Invoices() {
             companyId={selectedCompany.id}
             customers={customers}
             accounts={accounts}
+            initialData={invoiceInitialData}
             onSuccess={() => {
               setShowCreateInvoiceModal(false)
+              setInvoiceInitialData(undefined)
               loadInvoices()
             }}
-            onCancel={() => setShowCreateInvoiceModal(false)}
+            onCancel={() => {
+              setShowCreateInvoiceModal(false)
+              setInvoiceInitialData(undefined)
+            }}
           />
         </DraggableModal>
       )}
@@ -657,16 +715,19 @@ export default function Invoices() {
             companyId={selectedCompany.id}
             suppliers={suppliers}
             accounts={accounts}
+            initialData={supplierInvoiceInitialData}
             onSuccess={() => {
               resetSupplierInvoicePreview()
               setSupplierInvoiceAttachments([])
               setShowCreateSupplierInvoiceModal(false)
+              setSupplierInvoiceInitialData(undefined)
               loadInvoices()
             }}
             onCancel={() => {
               resetSupplierInvoicePreview()
               setSupplierInvoiceAttachments([])
               setShowCreateSupplierInvoiceModal(false)
+              setSupplierInvoiceInitialData(undefined)
             }}
             onAttachmentsChange={setSupplierInvoiceAttachments}
             onAttachmentClick={(_, index) => openSupplierInvoicePreview(index)}
@@ -764,7 +825,7 @@ export default function Invoices() {
                 </div>
                 <div>
                   <h3 className="text-lg font-semibold text-gray-900">
-                    Bokför leverantörsfaktura
+                    {selectedCompany?.accounting_basis === 'accrual' ? 'Bokför leverantörsfaktura' : 'Registrera leverantörsfaktura'}
                   </h3>
                   <p className="text-sm text-gray-600">
                     {confirmRegisterSupplierInvoice.supplier_invoice_number} - {confirmRegisterSupplierInvoice.supplier_name}
@@ -776,10 +837,14 @@ export default function Invoices() {
             {/* Content */}
             <div className="px-6 py-4">
               <p className="text-gray-700">
-                Vill du bokföra denna leverantörsfaktura?
+                {selectedCompany?.accounting_basis === 'accrual'
+                  ? 'Vill du bokföra denna leverantörsfaktura?'
+                  : 'Vill du registrera denna leverantörsfaktura?'}
               </p>
               <p className="text-sm text-gray-500 mt-2">
-                En verifikation kommer att skapas automatiskt med kostnad och ingående moms.
+                {selectedCompany?.accounting_basis === 'accrual'
+                  ? 'En verifikation kommer att skapas automatiskt med kostnad och ingående moms.'
+                  : 'Fakturan registreras som mottagen. Bokföring sker när fakturan markeras som betald.'}
               </p>
               <div className="mt-4 p-3 bg-gray-50 rounded-lg">
                 <div className="flex justify-between text-sm">
@@ -811,12 +876,12 @@ export default function Invoices() {
                       <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
                       <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
                     </svg>
-                    <span>Bokför...</span>
+                    <span>{selectedCompany?.accounting_basis === 'accrual' ? 'Bokför...' : 'Registrerar...'}</span>
                   </>
                 ) : (
                   <>
                     <FileText className="w-4 h-4" />
-                    <span>Bokför faktura</span>
+                    <span>{selectedCompany?.accounting_basis === 'accrual' ? 'Bokför faktura' : 'Registrera faktura'}</span>
                   </>
                 )}
               </button>

@@ -12,6 +12,7 @@ Modern, self-hosted bookkeeping system for Swedish businesses with full BAS kont
 - VAT reporting (momsrapport)
 - Balance sheet and income statement
 - SIE4 import/export for integration with other accounting software
+- AI bookkeeping assistant powered by Ollama (local LLM)
 - Multi-user authentication with role-based access
 - Backup and restore with calendar-based GUI and CLI support
 - PostgreSQL with automatic backups
@@ -145,6 +146,9 @@ reknir/
 ├── frontend/              # React + TypeScript frontend
 │   ├── src/
 │   │   ├── components/   # UI components
+│   │   │   └── ai/       # AI chat components
+│   │   ├── contexts/     # React contexts (auth, company, AI form)
+│   │   ├── hooks/        # Custom hooks (useAIChat, etc.)
 │   │   ├── pages/        # Page components
 │   │   ├── services/     # API clients
 │   │   └── types/        # TypeScript types

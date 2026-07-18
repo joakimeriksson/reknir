@@ -1,3 +1,4 @@
+import { useState, useEffect } from 'react'
 import { BrowserRouter as Router, Routes, Route, Link, useLocation } from 'react-router-dom'
 import { Home, FileText, PieChart, Settings, Receipt, BookOpen, Users, Wallet, LogOut, User, UserCog, Mail } from 'lucide-react'
 import Dashboard from './pages/Dashboard'
@@ -25,6 +26,10 @@ import { CompanyProvider, useCompany } from './contexts/CompanyContext'
 import { AuthProvider, useAuth } from './contexts/AuthContext'
 import { ToastProvider } from './contexts/ToastContext'
 import ProtectedRoute from './components/ProtectedRoute'
+import ChatFAB from './components/ai/ChatFAB'
+import ChatPanel from './components/ai/ChatPanel'
+import { AIFormProvider } from './contexts/AIFormContext'
+import { aiApi } from './services/api'
 
 function App() {
   return (
@@ -34,12 +39,14 @@ function App() {
           <ToastProvider>
           <CompanyProvider>
             <FiscalYearProvider>
+              <AIFormProvider>
               <Routes>
                 <Route path="/login" element={<Login />} />
                 <Route path="/invite/:token" element={<InviteAccept />} />
                 <Route path="/setup" element={<Setup />} />
                 <Route path="/*" element={<ProtectedRoute><AppContent /></ProtectedRoute>} />
               </Routes>
+              </AIFormProvider>
             </FiscalYearProvider>
           </CompanyProvider>
           </ToastProvider>
@@ -53,6 +60,16 @@ function AppContent() {
   const location = useLocation()
   const { user, logout } = useAuth()
   const { selectedCompany, setSelectedCompany } = useCompany()
+  const [isChatOpen, setIsChatOpen] = useState(false)
+  const [aiEnabled, setAiEnabled] = useState(false)
+
+  useEffect(() => {
+    aiApi.getSettings().then((resp) => {
+      setAiEnabled(resp.data.ai_enabled)
+    }).catch(() => {
+      setAiEnabled(false)
+    })
+  }, [])
 
   const menuItems = [
     { path: '/', icon: Home, label: 'Översikt' },
@@ -198,6 +215,10 @@ function AppContent() {
           </div>
         </main>
       </div>
+
+      {/* AI Assistant */}
+      {aiEnabled && <ChatFAB onClick={() => setIsChatOpen(!isChatOpen)} />}
+      <ChatPanel isOpen={isChatOpen} onClose={() => setIsChatOpen(false)} />
     </div>
   )
 }

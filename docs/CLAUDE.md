@@ -275,6 +275,7 @@ Kredit: 1930 Bankkonto              [Belopp]
 ### 6. Kunder & Leverantörer
 - Hantering av kundregister
 - Hantering av leverantörsregister
+- Leverantörers betalningsuppgifter (bankgiro, plusgiro, bankkonto med clearing/kontonummer, IBAN/BIC)
 - Koppling till fakturor
 
 ### 7. Momsrapportering
@@ -391,6 +392,44 @@ Detta innebär att en mall skapad år 2024 automatiskt fungerar år 2025, förut
 
 **Routes:**
 - `/settings` - Inställningar (flikbaserad vy)
+
+### 13. AI-assistent
+Integrerad chattassistent som körs via Ollama (lokal LLM). AI:n interagerar med systemets REST-API via HTTP-anrop med användarens JWT-token.
+
+**Arkitektur:**
+- `ollama_service.py` — HTTP-klient mot Ollama
+- `ai_api_client.py` — Anropar backendns egna API med användarens JWT
+- `ai_tools.py` — 20 läsverktyg + 11 skrivverktyg i OpenAI function-calling format
+- `ai_chat_service.py` — Verktygsloop (max 5 rundor), SSE-streaming
+- `ai_system_prompt.py` — Svensk systemprompt med bokföringsregler
+
+**Verktygsloop:**
+1. Skicka meddelandehistorik + systemprompt + verktygsdefinitioner till Ollama
+2. Text → strömma till frontend
+3. Läsverktyg → kör direkt, lägg till resultat, nästa runda
+4. Skrivverktyg → öppna riktigt formulär i frontend med förpopulerade fält
+5. Sista rundan → skicka utan verktyg för att tvinga textsvar
+
+**Formulärintegration:**
+Skrivverktyg öppnar befintliga formulär (InvoiceForm, VerificationForm, etc.) med förpopulerade fält via `AIFormContext`.
+
+**Databas:**
+- `ai_settings` — singleton med konfiguration
+- `chat_sessions` — per användare + företag
+- `chat_messages` — kopplade till session (cascade delete)
+- `ai_uploads` — temporära filer, separerade från bokföringens bilagor
+
+**API Endpoints:**
+- `GET /api/ai/health` — Kontrollera Ollama-status
+- `GET/PUT /api/ai/settings` — AI-inställningar
+- `GET /api/ai/models` — Lista Ollama-modeller
+- `POST /api/ai/chat` — Skicka meddelande, SSE-ström
+- `POST /api/ai/chat/approve` — Godkänn/neka verktygsförslag
+- `POST /api/ai/chat/upload` — Ladda upp fil
+- `GET/DELETE /api/ai/sessions` — Hantera chattsessioner
+
+**Routes:**
+- `/settings` — Inställningar (fliken "AI-assistent", admin)
 
 ## Standardkonfigurationer
 
@@ -517,6 +556,10 @@ Systemet använder default accounts för automatisk bokföring:
 - `posting_templates` - Konteringsmallar
 - `posting_template_lines` - Konteringsmallrader
 - `backup_schedule` - Schemaläggning av automatiska backuper (single-row)
+- `ai_settings` - AI-assistentens konfiguration (single-row)
+- `chat_sessions` - Chattsessioner per användare
+- `chat_messages` - Chattmeddelanden (cascade delete med session)
+- `ai_uploads` - Temporära filer för AI-chatten
 
 ### Enum Types
 - `InvoiceStatus`: draft, sent, paid, partial, overdue, cancelled
@@ -524,6 +567,7 @@ Systemet använder default accounts för automatisk bokföring:
 - `AccountType`: asset, liability, equity, revenue, expense
 - `AccountingBasis`: accrual, cash
 - `VATReportingPeriod`: monthly, quarterly, yearly
+- `PaymentType`: bankgiro, plusgiro, bank_account
 
 ## Utveckling
 
@@ -673,10 +717,20 @@ BSD 3-Clause License - Se LICENSE-filen i projektets rot.
 
 ---
 
-**Version:** 1.3.3
-**Senast uppdaterad:** 2026-04-06
+**Version:** 1.3.4
+**Senast uppdaterad:** 2026-04-14
 
 ## Ändringslogg
+
+### v1.3.4 (2026-04-14)
+- ✅ AI-assistent med Ollama-integration
+  - Chattbaserad bokföringsassistent med SSE-streaming
+  - 20 läsverktyg + 11 skrivverktyg via intern API-klient
+  - Skrivverktyg öppnar befintliga formulär med förpopulerade fält
+  - Admin-inställningar: on/off, Ollama URL/modell, systemprompt
+  - Sessionshantering per användare och företag
+  - Svensk systemprompt med stöd för kontant- och faktureringsmetoden
+- ✅ Fix: Dashboard-modal visar nu både intäkter och kostnader i blandade verifikationer
 
 ### v1.3.3 (2026-04-06)
 - ✅ Schemalagda automatiska backuper med konfigurerbart intervall och retention

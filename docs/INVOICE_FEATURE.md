@@ -56,7 +56,7 @@ Complete invoice management system for Swedish bookkeeping with automatic verifi
 
 **Supplier Management**:
 - Full CRUD for supplier register
-- Supplier details including bank account info
+- Supplier details including structured payment info (bankgiro, plusgiro, bank account, IBAN/BIC)
 - Payment terms
 - Active/inactive status
 

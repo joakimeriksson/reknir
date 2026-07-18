@@ -2,15 +2,18 @@ import { useEffect, useState } from 'react'
 import { Plus, Edit2, Trash2, X } from 'lucide-react'
 import { customerApi, supplierApi } from '@/services/api'
 import type { Customer, Supplier } from '@/types'
+import { PaymentType } from '@/types'
 import { getErrorMessage } from '@/utils/errors'
 import { useCompany } from '@/contexts/CompanyContext'
 import { useSortableTable } from '@/hooks/useSortableTable'
 import SortableHeader from '@/components/SortableHeader'
 import { useToast } from '@/contexts/ToastContext'
+import { useAIForm } from '@/contexts/AIFormContext'
 
 export default function Customers() {
   const { selectedCompany } = useCompany()
   const { showToast } = useToast()
+  const { pendingForm, clearForm } = useAIForm()
   const [customers, setCustomers] = useState<Customer[]>([])
   const [suppliers, setSuppliers] = useState<Supplier[]>([])
   const [loading, setLoading] = useState(true)
@@ -19,6 +22,41 @@ export default function Customers() {
   const [editingCustomer, setEditingCustomer] = useState<Customer | null>(null)
   const [editingSupplier, setEditingSupplier] = useState<Supplier | null>(null)
   const [activeTab, setActiveTab] = useState<'customers' | 'suppliers'>('customers')
+  const [customerInitialData, setCustomerInitialData] = useState<Partial<Customer> | undefined>()
+  const [supplierInitialData, setSupplierInitialData] = useState<Partial<Supplier> | undefined>()
+
+  useEffect(() => {
+    if (!pendingForm) return
+    if (pendingForm.type === 'customer') {
+      const d = pendingForm.data
+      setCustomerInitialData({
+        name: (d.name as string) || '',
+        org_number: (d.org_number as string) || '',
+        email: (d.email as string) || '',
+        phone: (d.phone as string) || '',
+        address: (d.address as string) || '',
+        postal_code: (d.postal_code as string) || '',
+        city: (d.city as string) || '',
+      })
+      setActiveTab('customers')
+      setShowCreateCustomerModal(true)
+      clearForm()
+    } else if (pendingForm.type === 'supplier') {
+      const d = pendingForm.data
+      setSupplierInitialData({
+        name: (d.name as string) || '',
+        org_number: (d.org_number as string) || '',
+        email: (d.email as string) || '',
+        phone: (d.phone as string) || '',
+        address: (d.address as string) || '',
+        postal_code: (d.postal_code as string) || '',
+        city: (d.city as string) || '',
+      })
+      setActiveTab('suppliers')
+      setShowCreateSupplierModal(true)
+      clearForm()
+    }
+  }, [pendingForm, clearForm])
 
   // Sorting for customers
   const { sortedData: sortedCustomers, sortConfig: customerSortConfig, requestSort: requestCustomerSort } = useSortableTable(
@@ -280,13 +318,16 @@ export default function Customers() {
         <CreateCustomerModal
           companyId={selectedCompany.id}
           customer={editingCustomer}
+          initialData={customerInitialData}
           onClose={() => {
             setShowCreateCustomerModal(false)
             setEditingCustomer(null)
+            setCustomerInitialData(undefined)
           }}
           onSuccess={() => {
             setShowCreateCustomerModal(false)
             setEditingCustomer(null)
+            setCustomerInitialData(undefined)
             loadData()
           }}
         />
@@ -297,13 +338,16 @@ export default function Customers() {
         <CreateSupplierModal
           companyId={selectedCompany.id}
           supplier={editingSupplier}
+          initialData={supplierInitialData}
           onClose={() => {
             setShowCreateSupplierModal(false)
             setEditingSupplier(null)
+            setSupplierInitialData(undefined)
           }}
           onSuccess={() => {
             setShowCreateSupplierModal(false)
             setEditingSupplier(null)
+            setSupplierInitialData(undefined)
             loadData()
           }}
         />
@@ -316,22 +360,24 @@ export default function Customers() {
 interface CreateCustomerModalProps {
   companyId: number
   customer?: Customer | null
+  initialData?: Partial<Customer>
   onClose: () => void
   onSuccess: () => void
 }
 
-function CreateCustomerModal({ companyId, customer, onClose, onSuccess }: CreateCustomerModalProps) {
+function CreateCustomerModal({ companyId, customer, initialData, onClose, onSuccess }: CreateCustomerModalProps) {
+  const source = customer || initialData
   const [formData, setFormData] = useState({
-    name: customer?.name || '',
-    org_number: customer?.org_number || '',
-    contact_person: customer?.contact_person || '',
-    email: customer?.email || '',
-    phone: customer?.phone || '',
-    address: customer?.address || '',
-    postal_code: customer?.postal_code || '',
-    city: customer?.city || '',
-    country: customer?.country || 'Sverige',
-    payment_terms_days: customer?.payment_terms_days || 30,
+    name: source?.name || '',
+    org_number: source?.org_number || '',
+    contact_person: source?.contact_person || '',
+    email: source?.email || '',
+    phone: source?.phone || '',
+    address: source?.address || '',
+    postal_code: source?.postal_code || '',
+    city: source?.city || '',
+    country: source?.country || 'Sverige',
+    payment_terms_days: source?.payment_terms_days || 30,
   })
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -542,24 +588,31 @@ function CreateCustomerModal({ companyId, customer, onClose, onSuccess }: Create
 interface CreateSupplierModalProps {
   companyId: number
   supplier?: Supplier | null
+  initialData?: Partial<Supplier>
   onClose: () => void
   onSuccess: () => void
 }
 
-function CreateSupplierModal({ companyId, supplier, onClose, onSuccess }: CreateSupplierModalProps) {
+function CreateSupplierModal({ companyId, supplier, initialData, onClose, onSuccess }: CreateSupplierModalProps) {
+  const source = supplier || initialData
   const [formData, setFormData] = useState({
-    name: supplier?.name || '',
-    org_number: supplier?.org_number || '',
-    contact_person: supplier?.contact_person || '',
-    email: supplier?.email || '',
-    phone: supplier?.phone || '',
-    address: supplier?.address || '',
-    postal_code: supplier?.postal_code || '',
-    city: supplier?.city || '',
-    country: supplier?.country || 'Sverige',
-    payment_terms_days: supplier?.payment_terms_days || 30,
-    bank_account: supplier?.bank_account || '',
-    bank_name: supplier?.bank_name || '',
+    name: source?.name || '',
+    org_number: source?.org_number || '',
+    contact_person: source?.contact_person || '',
+    email: source?.email || '',
+    phone: source?.phone || '',
+    address: source?.address || '',
+    postal_code: source?.postal_code || '',
+    city: source?.city || '',
+    country: source?.country || 'Sverige',
+    payment_terms_days: source?.payment_terms_days || 30,
+    payment_type: source?.payment_type || '' as PaymentType | '',
+    bankgiro_number: source?.bankgiro_number || '',
+    plusgiro_number: source?.plusgiro_number || '',
+    clearing_number: source?.clearing_number || '',
+    account_number: source?.account_number || '',
+    iban: source?.iban || '',
+    bic: source?.bic || '',
   })
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -584,8 +637,13 @@ function CreateSupplierModal({ companyId, supplier, onClose, onSuccess }: Create
         city: formData.city || undefined,
         country: formData.country,
         payment_terms_days: formData.payment_terms_days,
-        bank_account: formData.bank_account || undefined,
-        bank_name: formData.bank_name || undefined,
+        payment_type: formData.payment_type || null,
+        bankgiro_number: formData.bankgiro_number || null,
+        plusgiro_number: formData.plusgiro_number || null,
+        clearing_number: formData.clearing_number || null,
+        account_number: formData.account_number || null,
+        iban: formData.iban || null,
+        bic: formData.bic || null,
       }
 
       if (isEditing) {
@@ -745,29 +803,104 @@ function CreateSupplierModal({ companyId, supplier, onClose, onSuccess }: Create
               />
             </div>
 
-            <div>
+            <div className="md:col-span-2">
               <label className="block text-sm font-medium text-gray-700 mb-2">
-                Bankkontonummer
+                Betalningstyp
               </label>
-              <input
-                type="text"
-                value={formData.bank_account}
-                onChange={(e) => setFormData({ ...formData, bank_account: e.target.value })}
-                className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500"
-              />
+              <select
+                value={formData.payment_type}
+                onChange={(e) => setFormData({ ...formData, payment_type: e.target.value as PaymentType | '' })}
+                className="w-full md:w-1/2 px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500"
+              >
+                <option value="">Välj betalningstyp...</option>
+                <option value={PaymentType.BANKGIRO}>Bankgiro</option>
+                <option value={PaymentType.PLUSGIRO}>Plusgiro</option>
+                <option value={PaymentType.BANK_ACCOUNT}>Bankkonto</option>
+              </select>
             </div>
 
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-2">
-                Bank
-              </label>
-              <input
-                type="text"
-                value={formData.bank_name}
-                onChange={(e) => setFormData({ ...formData, bank_name: e.target.value })}
-                className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500"
-              />
-            </div>
+            {formData.payment_type === PaymentType.BANKGIRO && (
+              <div className="md:col-span-2">
+                <label className="block text-sm font-medium text-gray-700 mb-2">
+                  Bankgironummer
+                </label>
+                <input
+                  type="text"
+                  value={formData.bankgiro_number}
+                  onChange={(e) => setFormData({ ...formData, bankgiro_number: e.target.value })}
+                  className="w-full md:w-1/2 px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500"
+                  placeholder="t.ex. 123-4567"
+                />
+              </div>
+            )}
+
+            {formData.payment_type === PaymentType.PLUSGIRO && (
+              <div className="md:col-span-2">
+                <label className="block text-sm font-medium text-gray-700 mb-2">
+                  Plusgironummer
+                </label>
+                <input
+                  type="text"
+                  value={formData.plusgiro_number}
+                  onChange={(e) => setFormData({ ...formData, plusgiro_number: e.target.value })}
+                  className="w-full md:w-1/2 px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500"
+                  placeholder="t.ex. 12 34 56-7"
+                />
+              </div>
+            )}
+
+            {formData.payment_type === PaymentType.BANK_ACCOUNT && (
+              <>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">
+                    Clearingnummer
+                  </label>
+                  <input
+                    type="text"
+                    value={formData.clearing_number}
+                    onChange={(e) => setFormData({ ...formData, clearing_number: e.target.value })}
+                    className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500"
+                    placeholder="t.ex. 1234"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">
+                    Kontonummer
+                  </label>
+                  <input
+                    type="text"
+                    value={formData.account_number}
+                    onChange={(e) => setFormData({ ...formData, account_number: e.target.value })}
+                    className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500"
+                    placeholder="t.ex. 12 345 67"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">
+                    IBAN <span className="text-gray-400 text-xs">(valfritt)</span>
+                  </label>
+                  <input
+                    type="text"
+                    value={formData.iban}
+                    onChange={(e) => setFormData({ ...formData, iban: e.target.value })}
+                    className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500"
+                    placeholder="t.ex. SE12 3456 7890 1234 5678 9012"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">
+                    BIC/SWIFT <span className="text-gray-400 text-xs">(valfritt)</span>
+                  </label>
+                  <input
+                    type="text"
+                    value={formData.bic}
+                    onChange={(e) => setFormData({ ...formData, bic: e.target.value })}
+                    className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500"
+                    placeholder="t.ex. NDEASESS"
+                  />
+                </div>
+              </>
+            )}
           </div>
 
           <div className="flex justify-end gap-3">

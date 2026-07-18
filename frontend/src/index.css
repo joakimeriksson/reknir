@@ -52,3 +52,70 @@
 .animate-slide-in {
   animation: slide-in 0.2s ease-out;
 }
+
+.ai-markdown p {
+  margin: 0.4rem 0;
+}
+
+.ai-markdown ul,
+.ai-markdown ol {
+  margin: 0.25rem 0;
+  padding-left: 1.25rem;
+}
+
+.ai-markdown ul {
+  list-style-type: disc;
+}
+
+.ai-markdown ol {
+  list-style-type: decimal;
+}
+
+.ai-markdown li {
+  margin: 0.05rem 0;
+}
+
+.ai-markdown li > ul {
+  margin: 0;
+}
+
+.ai-markdown h1,
+.ai-markdown h2,
+.ai-markdown h3,
+.ai-markdown h4 {
+  font-weight: 600;
+  margin: 1rem 0 0.1rem;
+}
+
+.ai-markdown strong {
+  font-weight: 600;
+  color: #111827;
+}
+
+.ai-markdown code {
+  background: #f3f4f6;
+  padding: 0.1rem 0.3rem;
+  border-radius: 0.25rem;
+  font-size: 0.85em;
+}
+
+.ai-markdown pre {
+  background: #f3f4f6;
+  padding: 0.75rem;
+  border-radius: 0.5rem;
+  overflow-x: auto;
+  margin: 0.75rem 0;
+}
+
+.ai-markdown pre code {
+  background: none;
+  padding: 0;
+}
+
+.ai-markdown > :first-child {
+  margin-top: 0;
+}
+
+.ai-markdown > :last-child {
+  margin-bottom: 0;
+}

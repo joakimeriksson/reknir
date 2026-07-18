@@ -65,6 +65,27 @@ def get_supplier_tools() -> list[Tool]:
                         "type": "string",
                         "description": "Supplier address",
                     },
+                    "payment_type": {
+                        "type": "string",
+                        "enum": ["bankgiro", "plusgiro", "bank_account"],
+                        "description": "Payment type (bankgiro, plusgiro, or bank_account)",
+                    },
+                    "bankgiro_number": {
+                        "type": "string",
+                        "description": "Bankgiro number (when payment_type is bankgiro)",
+                    },
+                    "plusgiro_number": {
+                        "type": "string",
+                        "description": "Plusgiro number (when payment_type is plusgiro)",
+                    },
+                    "clearing_number": {
+                        "type": "string",
+                        "description": "Bank clearing number (when payment_type is bank_account)",
+                    },
+                    "account_number": {
+                        "type": "string",
+                        "description": "Bank account number (when payment_type is bank_account)",
+                    },
                 },
                 "required": ["company_id", "name"],
             },

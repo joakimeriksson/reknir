@@ -1,7 +1,8 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useState, useMemo } from 'react'
 import { X } from 'lucide-react'
 import { supplierInvoiceApi, attachmentApi } from '@/services/api'
 import AttachmentManager from '@/components/AttachmentManager'
+import AccountCombobox from '@/components/forms/AccountCombobox'
 import type { Supplier, Account, InvoiceLine, EntityAttachment } from '@/types'
 import { getErrorMessage } from '@/utils/errors'
 
@@ -9,21 +10,31 @@ import { getErrorMessage } from '@/utils/errors'
 // Types & Interfaces
 // ============================================================================
 
+export interface SupplierInvoiceInitialData {
+  supplierId?: number
+  supplierInvoiceNumber?: string
+  invoiceDate?: string
+  dueDate?: string
+  ocrNumber?: string
+  reference?: string
+  lines?: Partial<InvoiceLine>[]
+  pendingAttachmentIds?: number[]
+}
+
 export interface SupplierInvoiceFormProps {
   companyId: number
   suppliers: Supplier[]
   accounts: Account[]
   onSuccess: () => void
   onCancel: () => void
+  initialData?: SupplierInvoiceInitialData
   renderFooter?: (props: {
     onSubmit: () => void
     onCancel: () => void
     isLoading: boolean
     isValid: boolean
   }) => React.ReactNode
-  // Callback for parent to track attachment changes (for split-screen feature)
   onAttachmentsChange?: (attachments: EntityAttachment[]) => void
-  // Callback when attachment is clicked (for external preview handling)
   onAttachmentClick?: (attachment: EntityAttachment, index: number) => void
 }
 
@@ -59,22 +70,37 @@ export default function SupplierInvoiceForm({
   accounts,
   onSuccess,
   onCancel,
+  initialData,
   renderFooter,
   onAttachmentsChange,
   onAttachmentClick,
 }: SupplierInvoiceFormProps) {
-  const [supplierId, setSupplierId] = useState<number>(0)
-  const [supplierInvoiceNumber, setSupplierInvoiceNumber] = useState('')
-  const [invoiceDate, setInvoiceDate] = useState(new Date().toISOString().split('T')[0])
-  const [dueDate, setDueDate] = useState('')
-  const [ocrNumber, setOcrNumber] = useState('')
-  const [reference, setReference] = useState('')
-  const [lines, setLines] = useState<InvoiceLine[]>([
-    { description: '', quantity: 1, unit: 'st', unit_price: 0, vat_rate: 25 }
-  ])
+  const [supplierId, setSupplierId] = useState<number>(initialData?.supplierId || 0)
+  const [supplierInvoiceNumber, setSupplierInvoiceNumber] = useState(initialData?.supplierInvoiceNumber || '')
+  const [invoiceDate, setInvoiceDate] = useState(initialData?.invoiceDate || new Date().toISOString().split('T')[0])
+  const [dueDate, setDueDate] = useState(initialData?.dueDate || '')
+  const [ocrNumber, setOcrNumber] = useState(initialData?.ocrNumber || '')
+  const [reference, setReference] = useState(initialData?.reference || '')
+  const [lines, setLines] = useState<InvoiceLine[]>(
+    initialData?.lines?.length
+      ? initialData.lines.map(l => ({
+          description: l.description || '',
+          quantity: l.quantity || 1,
+          unit: l.unit || 'st',
+          unit_price: l.unit_price || 0,
+          vat_rate: l.vat_rate ?? 25,
+          account_id: l.account_id,
+        }))
+      : [{ description: '', quantity: 1, unit: 'st', unit_price: 0, vat_rate: 25 }]
+  )
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
-  const [pendingAttachmentIds, setPendingAttachmentIds] = useState<number[]>([])
+  const [pendingAttachmentIds, setPendingAttachmentIds] = useState<number[]>(initialData?.pendingAttachmentIds || [])
+
+  const expenseAccounts = useMemo(
+    () => accounts.filter(a => a.account_number >= 4000 && a.account_number < 8000),
+    [accounts]
+  )
 
   // Update due date when supplier changes
   useEffect(() => {
@@ -275,20 +301,26 @@ export default function SupplierInvoiceForm({
             {lines.map((line, index) => (
               <div key={index} className="space-y-2 p-3 bg-gray-50 rounded">
                 <div className="grid grid-cols-12 gap-2 items-start">
-                  <div className="col-span-12 md:col-span-6">
+                  <div className="col-span-4">
+                    <label className="block text-sm font-medium text-gray-700 mb-1">
+                      Beskrivning *
+                    </label>
                     <input
                       type="text"
-                      placeholder="Beskrivning *"
+                      placeholder="Beskrivning av vara/tjänst"
                       value={line.description}
                       onChange={(e) => updateLine(index, 'description', e.target.value)}
                       className="w-full px-3 py-2 border border-gray-300 rounded focus:ring-2 focus:ring-primary-500"
                       required
                     />
                   </div>
-                  <div className="col-span-4 md:col-span-2">
+                  <div className="col-span-2">
+                    <label className="block text-sm font-medium text-gray-700 mb-1">
+                      Antal *
+                    </label>
                     <input
                       type="number"
-                      placeholder="Antal"
+                      placeholder="1"
                       value={line.quantity || ''}
                       onChange={(e) => {
                         const value = e.target.value === '' ? 0 : parseFloat(e.target.value) || 0
@@ -300,10 +332,25 @@ export default function SupplierInvoiceForm({
                       required
                     />
                   </div>
-                  <div className="col-span-4 md:col-span-2">
+                  <div className="col-span-1">
+                    <label className="block text-sm font-medium text-gray-700 mb-1">
+                      Enhet
+                    </label>
+                    <input
+                      type="text"
+                      placeholder="st"
+                      value={line.unit}
+                      onChange={(e) => updateLine(index, 'unit', e.target.value)}
+                      className="w-full px-3 py-2 border border-gray-300 rounded focus:ring-2 focus:ring-primary-500"
+                    />
+                  </div>
+                  <div className="col-span-2">
+                    <label className="block text-sm font-medium text-gray-700 mb-1">
+                      À-pris *
+                    </label>
                     <input
                       type="number"
-                      placeholder="À-pris (kr per enhet)"
+                      placeholder="0,00"
                       value={line.unit_price || ''}
                       onChange={(e) => {
                         const value = e.target.value === '' ? 0 : parseFloat(e.target.value) || 0
@@ -315,7 +362,10 @@ export default function SupplierInvoiceForm({
                       required
                     />
                   </div>
-                  <div className="col-span-4 md:col-span-2">
+                  <div className="col-span-2">
+                    <label className="block text-sm font-medium text-gray-700 mb-1">
+                      Moms *
+                    </label>
                     <select
                       value={line.vat_rate}
                       onChange={(e) => updateLine(index, 'vat_rate', parseFloat(e.target.value))}
@@ -327,34 +377,36 @@ export default function SupplierInvoiceForm({
                       <option value={25}>25%</option>
                     </select>
                   </div>
-                  <div className="col-span-1 md:col-span-1 text-right">
-                    {lines.length > 1 && (
-                      <button
-                        type="button"
-                        onClick={() => removeLine(index)}
-                        className="text-red-600 hover:text-red-800 p-2"
-                      >
-                        <X className="w-4 h-4" />
-                      </button>
-                    )}
+                  <div className="col-span-1">
+                    <label className="block text-sm font-medium text-gray-700 mb-1">
+                      &nbsp;
+                    </label>
+                    <div className="flex justify-center">
+                      {lines.length > 1 && (
+                        <button
+                          type="button"
+                          onClick={() => removeLine(index)}
+                          className="text-red-600 hover:text-red-800 p-2"
+                        >
+                          <X className="w-4 h-4" />
+                        </button>
+                      )}
+                    </div>
                   </div>
                 </div>
                 <div className="grid grid-cols-12 gap-2 items-center">
-                  <div className="col-span-12 md:col-span-6">
-                    <select
-                      value={line.account_id || ''}
-                      onChange={(e) => updateLine(index, 'account_id', e.target.value ? parseInt(e.target.value) : undefined)}
-                      className="w-full px-3 py-2 border border-gray-300 rounded focus:ring-2 focus:ring-primary-500 text-sm"
-                    >
-                      <option value="">Auto (6570 - Övriga externa tjänster)</option>
-                      {accounts.filter(a => a.account_number >= 4000 && a.account_number < 8000).map(account => (
-                        <option key={account.id} value={account.id}>
-                          {account.account_number} - {account.name}
-                        </option>
-                      ))}
-                    </select>
+                  <div className="col-span-12 md:col-span-5">
+                    <label className="block text-sm font-medium text-gray-700 mb-1">
+                      Kostnadskonto
+                    </label>
+                    <AccountCombobox
+                      accounts={expenseAccounts}
+                      value={line.account_id || 0}
+                      onChange={(id) => updateLine(index, 'account_id', id || undefined)}
+                      placeholder="Auto (6570 - Övriga externa tjänster)"
+                    />
                   </div>
-                  <div className="col-span-12 md:col-span-5 text-right font-mono text-sm">
+                  <div className="col-span-12 md:col-span-6 text-right font-mono text-sm">
                     Totalt: {calculateLineTotal(line).toLocaleString('sv-SE')} kr
                   </div>
                 </div>

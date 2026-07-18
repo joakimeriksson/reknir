@@ -34,6 +34,13 @@ import type {
   RestoreResponse,
   BackupScheduleResponse,
   BackupScheduleUpdate,
+  AISettings,
+  AISettingsUpdate,
+  OllamaModel,
+  OllamaHealth,
+  ChatSession,
+  ChatSessionDetail,
+  AIUpload,
 } from '@/types'
 
 const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000/api'
@@ -403,6 +410,28 @@ export const backupApi = {
 
   updateSchedule: (data: BackupScheduleUpdate) =>
     api.put<BackupScheduleResponse>('/backup/schedule', data),
+}
+
+// AI Assistant
+export const aiApi = {
+  getHealth: () => api.get<OllamaHealth>('/ai/health'),
+  getSettings: () => api.get<AISettings>('/ai/settings'),
+  updateSettings: (data: AISettingsUpdate) => api.put<AISettings>('/ai/settings', data),
+  listModels: () => api.get<OllamaModel[]>('/ai/models'),
+  listSessions: (companyId: number) =>
+    api.get<ChatSession[]>('/ai/sessions', { params: { company_id: companyId } }),
+  getSession: (sessionId: number) => api.get<ChatSessionDetail>(`/ai/sessions/${sessionId}`),
+  deleteSession: (sessionId: number) => api.delete(`/ai/sessions/${sessionId}`),
+  uploadFile: (companyId: number, file: File) => {
+    const formData = new FormData()
+    formData.append('file', file)
+    return api.post<AIUpload>('/ai/chat/upload', formData, {
+      params: { company_id: companyId },
+    })
+  },
+  getUploadUrl: (uploadId: number) => `${API_BASE_URL}/ai/uploads/${uploadId}`,
+  copyToAttachment: (uploadId: number) =>
+    api.post<Attachment>(`/ai/uploads/${uploadId}/to-attachment`),
 }
 
 export default api
