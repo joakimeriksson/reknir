@@ -3,16 +3,16 @@ services:
     image: postgres:16-alpine
     container_name: reknir-db
     environment:
-      POSTGRES_USER: reknir
+      POSTGRES_USER: ${POSTGRES_USER:-reknir}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-reknir}
-      POSTGRES_DB: reknir
+      POSTGRES_DB: ${POSTGRES_DB:-reknir}
       PGDATA: /var/lib/postgresql/data/pgdata
     volumes:
       - postgres_data:/var/lib/postgresql/data
       - ./backups:/backups
     # No port exposure - internal only
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U reknir"]
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-reknir}"]
       interval: 10s
       timeout: 5s
       retries: 5
@@ -26,8 +26,8 @@ services:
       dockerfile: Dockerfile.prod
     container_name: reknir-backend
     environment:
-      DATABASE_URL: postgresql://reknir:${POSTGRES_PASSWORD:-reknir}@postgres:5432/reknir
-      CORS_ORIGINS: ${CORS_ORIGINS:-*}
+      DATABASE_URL: postgresql://${POSTGRES_USER:-reknir}:${POSTGRES_PASSWORD:-reknir}@postgres:5432/${POSTGRES_DB:-reknir}
+      CORS_ORIGINS: ${CORS_ORIGINS:-${APP_URL:-*}}
       DEBUG: "False"
       SECRET_KEY: ${SECRET_KEY:-change-this-in-production}
     # No port exposure - accessed via nginx only
@@ -47,7 +47,7 @@ services:
       context: ./frontend
       dockerfile: Dockerfile.prod
       args:
-        VITE_API_URL: /api
+        VITE_API_URL: ${VITE_API_URL:-/api}
     container_name: reknir-frontend
     # No port exposure - accessed via nginx gateway only
     depends_on:
@@ -57,6 +57,8 @@ services:
       - reknir-internal
     # Dockerfile.prod serves built static files via nginx
 
+  # Gateway - the stack's single entry point: routes / to the frontend and
+  # /api to the backend. The only published port (NGINX_PORT).
   nginx:
     image: nginx:alpine
     container_name: reknir-nginx
@@ -77,14 +79,15 @@ services:
       retries: 3
 
 
-  # Cloudflare Tunnel - secure access without exposing ports
+  # Cloudflare Tunnel - secure access without exposing ports.
+  # Opt-in: started only with COMPOSE_PROFILES=tunnel (set TUNNEL_TOKEN in .env).
   cloudflared:
+    profiles: ["tunnel"]
     image: cloudflare/cloudflared:latest
     container_name: reknir-cloudflared
-    command: tunnel --no-autoupdate --config /etc/cloudflared/config.yml run
-    volumes:
-      - ./cloudflared-config.yml:/etc/cloudflared/config.yml:ro
-      - ./cloudflared-credentials.json:/etc/cloudflared/credentials.json:ro
+    command: tunnel --no-autoupdate run
+    environment:
+      TUNNEL_TOKEN: ${TUNNEL_TOKEN:-}
     depends_on:
       - nginx
     restart: unless-stopped

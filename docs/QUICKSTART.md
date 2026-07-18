@@ -14,6 +14,9 @@ Complete guide for setting up Reknir for development and production.
 git clone <repo-url>
 cd reknir
 
+# Create your env file (selects the dev stack via COMPOSE_FILE)
+cp .env.dev.example .env
+
 # Start all services (database, backend, frontend)
 docker compose up -d
 
@@ -90,14 +93,15 @@ For detailed production setup with HTTPS and Cloudflare Tunnel, see [DEPLOYMENT.
 ### Quick Production Start
 
 ```bash
-# 1. Run setup script
-./setup-production.sh
+# 1. Create production env file (selects the prod stack via COMPOSE_FILE)
+cp .env.prod.example .env
+nano .env   # set POSTGRES_PASSWORD, SECRET_KEY, APP_URL
 
 # 2. Deploy
-docker compose -f docker-compose.prod.yml --env-file .env.prod up -d --build
+docker compose up -d --build
 
 # 3. Verify
-docker compose -f docker-compose.prod.yml logs -f
+docker compose logs -f
 ```
 
 ---
@@ -112,8 +116,8 @@ docker compose ps
 docker compose logs -f
 
 # Production
-docker compose -f docker-compose.prod.yml ps
-docker compose -f docker-compose.prod.yml logs -f backend
+docker compose ps
+docker compose logs -f backend
 ```
 
 ### Restart Services
@@ -123,8 +127,8 @@ docker compose -f docker-compose.prod.yml logs -f backend
 docker compose restart
 
 # Production
-docker compose -f docker-compose.prod.yml restart
-docker compose -f docker-compose.prod.yml restart backend  # specific service
+docker compose restart
+docker compose restart backend  # specific service
 ```
 
 ### Database Migrations
@@ -135,7 +139,7 @@ docker compose exec backend alembic upgrade head
 docker compose exec backend alembic current  # check version
 
 # Production
-docker compose -f docker-compose.prod.yml exec backend alembic upgrade head
+docker compose exec backend alembic upgrade head
 ```
 
 ---
@@ -187,16 +191,16 @@ docker compose up -d --build frontend  # rebuild if needed
 ### Production: Cloudflare Tunnel Issues
 
 ```bash
-docker compose -f docker-compose.prod.yml logs cloudflared
+docker compose logs cloudflared
 # Should see: "Connection <UUID> registered"
-# If not: check TUNNEL_TOKEN in .env.prod
+# If not: check COMPOSE_PROFILES=tunnel and TUNNEL_TOKEN in .env
 ```
 
 ### Production: 502 Bad Gateway
 
 ```bash
-docker compose -f docker-compose.prod.yml ps backend
-docker compose -f docker-compose.prod.yml logs backend
+docker compose ps backend
+docker compose logs backend
 ```
 
 ---
@@ -210,7 +214,7 @@ docker compose -f docker-compose.prod.yml logs backend
 docker compose exec postgres psql -U reknir -d reknir
 
 # Production
-docker compose -f docker-compose.prod.yml exec postgres psql -U reknir -d reknir
+docker compose exec postgres psql -U reknir -d reknir
 ```
 
 ### Backend Shell
@@ -220,15 +224,14 @@ docker compose -f docker-compose.prod.yml exec postgres psql -U reknir -d reknir
 docker compose exec backend bash
 
 # Production
-docker compose -f docker-compose.prod.yml exec backend bash
+docker compose exec backend bash
 ```
 
 ### Update Application
 
 ```bash
 git pull
-docker compose up -d --build                    # development
-docker compose -f docker-compose.prod.yml up -d --build  # production
+docker compose up -d --build   # stack selected by COMPOSE_FILE in .env
 ```
 
 ---
@@ -266,7 +269,7 @@ docker compose run --rm backend pytest -v
 ## More Documentation
 
 - [README.md](../README.md) - Project overview
-- [PRODUCTION.md](PRODUCTION.md) - Detailed production deployment
+- [DEPLOYMENT.md](DEPLOYMENT.md) - Detailed production deployment
 - [ARCHITECTURE.md](ARCHITECTURE.md) - System design
 - [AUTH_SETUP.md](AUTH_SETUP.md) - Authentication configuration
 - [CLAUDE.md](CLAUDE.md) - Codebase reference

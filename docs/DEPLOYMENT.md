@@ -34,11 +34,6 @@ newgrp docker
 # Install Docker Compose plugin
 sudo apt install docker-compose-plugin -y
 
-# Install cloudflared
-curl -fsSL https://pkg.cloudflare.com/cloudflare-main.gpg | sudo tee /usr/share/keyrings/cloudflare-archive-keyring.gpg >/dev/null
-echo "deb [signed-by=/usr/share/keyrings/cloudflare-archive-keyring.gpg] https://pkg.cloudflare.com/cloudflared $(lsb_release -cs) main" | sudo tee /etc/apt/sources.list.d/cloudflared.list
-sudo apt update && sudo apt install cloudflared -y
-
 # Install useful tools
 sudo apt install htop ncdu curl wget -y
 ```
@@ -58,102 +53,54 @@ git checkout claude/multi-user-admin-setup-011CV5Th44NuvaSjAxfG9EVP
 
 ```bash
 # Create production environment file
-cp .env.production.example .env.production
+cp .env.prod.example .env
 
 # Edit with your values
-nano .env.production
+nano .env
 ```
 
-**Required changes in `.env.production`:**
+**Required changes in `.env`:**
 - `POSTGRES_PASSWORD`: Strong password for database
 - `SECRET_KEY`: Generate with `openssl rand -hex 32`
-- `CORS_ORIGINS`: Your domain (e.g., `https://reknir.yourdomain.com`)
+- `APP_URL`: Your public URL (e.g., `https://reknir.yourdomain.com`) -
+  CORS is derived from it automatically
+- Cloudflare Tunnel: see Step 4
 
-**Create frontend environment:**
-```bash
-cat > frontend/.env << 'EOF'
-VITE_API_URL=/api
-EOF
-```
+## Step 4: Setup Cloudflare Tunnel (optional)
 
-## Step 4: Setup Cloudflare Tunnel
+The tunnel runs as a container in the stack and connects outbound to
+Cloudflare - no inbound ports needed, nothing to install on the host.
+If you skip it, point your DNS or reverse proxy at `http://<server>:NGINX_PORT`
+instead.
 
-### Option A: Dashboard Method (Recommended)
+1. Go to [Cloudflare Zero Trust](https://one.dash.cloudflare.com/):
+   **Networks** → **Tunnels** → **Create a tunnel**, name it `reknir-prod`,
+   and copy the tunnel token (starts with `eyJ...`)
+2. Add a **Public Hostname**: your domain → Type `HTTP`, URL `nginx:80`
+3. Enable it by uncommenting in `.env`:
 
-1. **Go to Cloudflare Dashboard**:
-   - Navigate to: **Zero Trust** → **Networks** → **Tunnels**
-   - Click **Create a tunnel**
-
-2. **Configure Tunnel**:
-   - Name: `reknir-prod`
-   - Save tunnel
-
-3. **Add Public Hostname**:
-   - Subdomain: `reknir` (or your choice)
-   - Domain: Select your domain
-   - Service Type: `HTTP`
-   - URL: `localhost:80`
-   - Save
-
-4. **Install Connector**:
-   - Copy the docker run command from the dashboard
-   - It will look like:
-   ```bash
-   docker run -d --name cloudflared-tunnel \
-     --restart=unless-stopped \
-     --network host \
-     cloudflare/cloudflared:latest tunnel run \
-     --token eyJhIjoiXXXXXXXXXXXXXXXX...
    ```
-   - Run this command on your server
-
-### Option B: CLI Method
-
-```bash
-# Login to Cloudflare
-cloudflared tunnel login
-
-# Create tunnel
-cloudflared tunnel create reknir-prod
-
-# Add DNS route (replace yourdomain.com)
-cloudflared tunnel route dns reknir-prod reknir.yourdomain.com
-
-# Create config
-mkdir -p ~/.cloudflared
-cat > ~/.cloudflared/config.yml << 'EOF'
-tunnel: <tunnel-id-from-create-command>
-credentials-file: /home/<username>/.cloudflared/<tunnel-id>.json
-
-ingress:
-  - hostname: reknir.yourdomain.com
-    service: http://localhost:80
-  - service: http_status:404
-EOF
-
-# Install as service
-sudo cloudflared service install
-sudo systemctl enable cloudflared
-sudo systemctl start cloudflared
-```
+   COMPOSE_PROFILES=tunnel
+   TUNNEL_TOKEN=eyJ...
+   ```
 
 ## Step 5: Start Services
 
 ```bash
 cd ~/reknir
 
-# Start production stack
-docker compose -f docker-compose.prod.yml --env-file .env.production up -d
+# Start production stack (compose file and profiles come from .env)
+docker compose up -d
 
 # Check all containers are running
-docker compose -f docker-compose.prod.yml ps
+docker compose ps
 
 # You should see:
-# - reknir-db         (postgres)
-# - reknir-backend    (fastapi)
-# - reknir-frontend   (vite)
-# - reknir-nginx      (nginx reverse proxy)
-# - reknir-backup     (backup service)
+# - reknir-db          (postgres)
+# - reknir-backend     (fastapi)
+# - reknir-frontend    (static frontend served by nginx)
+# - reknir-nginx       (nginx gateway)
+# - reknir-cloudflared (cloudflare tunnel)
 ```
 
 ## Step 6: Initialize Database
@@ -169,9 +116,8 @@ docker exec reknir-db psql -U reknir -d reknir -c "SELECT count(*) FROM alembic_
 ## Step 7: Verify Deployment
 
 ```bash
-# Check tunnel is connected
-cloudflared tunnel list
-# Should show connections for reknir-prod
+# Check tunnel is connected (should show "Connection <UUID> registered")
+docker compose logs cloudflared
 
 # Check local services
 curl http://localhost/health          # Should return "healthy"
@@ -179,7 +125,7 @@ curl http://localhost/api/docs        # Should return HTML
 curl http://localhost/                # Should return HTML
 
 # Check containers
-docker compose -f docker-compose.prod.yml logs --tail=50
+docker compose logs --tail=50
 
 # Monitor resources
 docker stats
@@ -209,11 +155,11 @@ docker compose exec backend python -m app.cli backup create
 
 ```bash
 # Watch logs in real-time
-docker compose -f docker-compose.prod.yml logs -f
+docker compose logs -f
 
 # Check specific service
-docker compose -f docker-compose.prod.yml logs -f backend
-docker compose -f docker-compose.prod.yml logs -f nginx
+docker compose logs -f backend
+docker compose logs -f nginx
 
 # Check resource usage
 docker stats
@@ -233,9 +179,9 @@ cd ~/reknir
 git pull
 
 # Rebuild and restart
-docker compose -f docker-compose.prod.yml --env-file .env.production down
-docker compose -f docker-compose.prod.yml --env-file .env.production build --no-cache
-docker compose -f docker-compose.prod.yml --env-file .env.production up -d
+docker compose down
+docker compose build --no-cache
+docker compose up -d
 
 # Run migrations
 docker exec reknir-backend alembic upgrade head
@@ -279,8 +225,8 @@ sudo apt autoremove -y
 
 echo "=== Docker Update ==="
 cd ~/reknir
-docker compose -f docker-compose.prod.yml --env-file .env.production pull
-docker compose -f docker-compose.prod.yml --env-file .env.production up -d
+docker compose pull
+docker compose up -d
 
 echo "=== Cleanup ==="
 docker system prune -f
@@ -301,20 +247,20 @@ chmod +x ~/update-system.sh
 
 ```bash
 # Check logs
-docker compose -f docker-compose.prod.yml logs
+docker compose logs
 
 # Check specific service
-docker compose -f docker-compose.prod.yml logs backend
+docker compose logs backend
 
 # Restart specific service
-docker compose -f docker-compose.prod.yml restart backend
+docker compose restart backend
 ```
 
 ### Database Connection Issues
 
 ```bash
 # Check database is running
-docker compose -f docker-compose.prod.yml ps postgres
+docker compose ps postgres
 
 # Connect to database
 docker exec -it reknir-db psql -U reknir -d reknir
@@ -326,36 +272,30 @@ docker exec reknir-db psql -U reknir -d reknir -c "SELECT pg_size_pretty(pg_data
 ### Tunnel Not Working
 
 ```bash
-# Check tunnel status
-cloudflared tunnel list
-cloudflared tunnel info reknir-prod
+# Check tunnel logs (should show "Connection <UUID> registered")
+docker compose logs cloudflared
 
-# Restart tunnel (if using docker)
-docker restart cloudflared-tunnel
+# Restart tunnel
+docker compose restart cloudflared
 
-# Or restart service
-sudo systemctl restart cloudflared
-
-# Check tunnel logs
-docker logs cloudflared-tunnel
-# Or
-sudo journalctl -u cloudflared -f
+# If it never registers: verify TUNNEL_TOKEN in .env and check the tunnel's
+# status in the Cloudflare Zero Trust dashboard
 ```
 
 ### 502 Bad Gateway
 
 ```bash
 # Check nginx is running
-docker compose -f docker-compose.prod.yml ps nginx
+docker compose ps nginx
 
 # Check nginx logs
-docker compose -f docker-compose.prod.yml logs nginx
+docker compose logs nginx
 
 # Check backend is accessible from nginx
 docker exec reknir-nginx wget -O- http://backend:8000/docs
 
 # Restart nginx
-docker compose -f docker-compose.prod.yml restart nginx
+docker compose restart nginx
 ```
 
 ### High Resource Usage
@@ -406,9 +346,9 @@ environment:
 ## Maintenance
 
 ### Daily Tasks
-- Check `docker compose -f docker-compose.prod.yml ps` - all services running
+- Check `docker compose ps` - all services running
 - Monitor disk space: `df -h`
-- Check logs for errors: `docker compose -f docker-compose.prod.yml logs --tail=100`
+- Check logs for errors: `docker compose logs --tail=100`
 
 ### Weekly Tasks
 - Review backups: `ls -lh ~/reknir/backups/`
@@ -423,7 +363,7 @@ environment:
 ## Support
 
 For issues or questions:
-- Check logs: `docker compose -f docker-compose.prod.yml logs`
+- Check logs: `docker compose logs`
 - Review this guide
 - Check GitHub issues: https://github.com/joakimeriksson/reknir/issues
 
