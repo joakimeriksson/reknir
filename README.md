@@ -100,10 +100,6 @@ After creating a company via the onboarding wizard, you can seed it with the Swe
 ### In Docker (Production)
 
 ```bash
-# Copy seed files to container (required for production)
-docker exec reknir-backend mkdir -p /app/database/seeds
-docker cp database/seeds/. reknir-backend:/app/database/seeds/
-
 # Seed BAS kontoplan for company ID 1
 docker exec reknir-backend python -m app.cli seed-bas
 
