@@ -52,5 +52,12 @@ jobs:
     steps:
       - uses: actions/checkout@v6
 
-      - name: Build all services
-        run: docker compose build
+      - name: Build dev stack
+        run: |
+          cp .env.dev.example .env
+          docker compose build
+
+      - name: Build prod stack
+        run: |
+          cp .env.prod.example .env
+          docker compose build
