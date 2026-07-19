@@ -23,4 +23,10 @@ def get_db():
     try:
         yield db
     finally:
-        db.close()
+        try:
+            db.close()
+        except Exception:
+            # The connection may already be gone (a restore terminates every
+            # session as part of its atomic swap); a failed close must not
+            # turn an otherwise completed request into a 500 response.
+            db.invalidate()
