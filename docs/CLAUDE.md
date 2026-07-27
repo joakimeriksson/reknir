@@ -564,7 +564,7 @@ Systemet använder default accounts för automatisk bokföring:
 ### Enum Types
 - `InvoiceStatus`: draft, sent, paid, partial, overdue, cancelled
 - `ExpenseStatus`: draft, submitted, approved, paid, rejected
-- `AccountType`: asset, liability, equity, revenue, expense
+- `AccountType`: asset, equity_liability, revenue, cost_goods, cost_local, cost_other, cost_personnel, cost_misc
 - `AccountingBasis`: accrual, cash
 - `VATReportingPeriod`: monthly, quarterly, yearly
 - `PaymentType`: bankgiro, plusgiro, bank_account
