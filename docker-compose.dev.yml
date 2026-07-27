@@ -28,7 +28,7 @@ services:
       DATABASE_URL: postgresql://${POSTGRES_USER:-reknir}:${POSTGRES_PASSWORD:-reknir}@postgres:5432/${POSTGRES_DB:-reknir}
       SECRET_KEY: ${SECRET_KEY:-change-this-in-production}
       DEBUG: ${DEBUG:-True}
-      CORS_ORIGINS: ${CORS_ORIGINS:-http://localhost:5173,http://localhost:3000}
+      CORS_ORIGINS: ${CORS_ORIGINS:-http://${APP_HOST:-localhost}:${FRONTEND_PORT:-5173},http://localhost:3000}
       BACKUP_DIR: /backups
     ports:
       - "${BACKEND_PORT:-8000}:8000"
@@ -57,7 +57,7 @@ services:
       - ./frontend:/app
       - /app/node_modules  # Prevent overwriting node_modules
     environment:
-      VITE_API_URL: ${VITE_API_URL:-http://localhost:8000/api}
+      VITE_API_URL: ${VITE_API_URL:-http://${APP_HOST:-localhost}:${BACKEND_PORT:-8000}/api}
     restart: unless-stopped
     command: npm run dev -- --host 0.0.0.0
 

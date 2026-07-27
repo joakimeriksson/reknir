@@ -46,7 +46,7 @@ reknir/
 ├── uploads/                  # Uppladdade filer (logotyper)
 │   └── logos/                # Företagslogotyper
 ├── backups/                  # Backup-arkiv (.tar.gz)
-└── docker-compose.yml        # Container orchestration
+└── docker-compose.dev.yml    # Container orchestration (dev)
 ```
 
 ## Huvudfunktioner
@@ -573,6 +573,7 @@ Systemet använder default accounts för automatisk bokföring:
 
 ### Starta utvecklingsmiljö
 ```bash
+cp .env.dev.example .env   # första gången – väljer dev-stacken via COMPOSE_FILE
 docker compose up
 ```
 

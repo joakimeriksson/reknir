@@ -196,7 +196,7 @@ openssl rand -hex 32
 SECRET_KEY=your-generated-key-here
 ```
 
-Or set environment variable in docker-compose.yml:
+Or set environment variable in docker-compose.dev.yml:
 ```yaml
 services:
   backend:

@@ -23,38 +23,31 @@ if ! command -v docker &> /dev/null; then
     exit 1
 fi
 
-# Check if .env.production exists
-if [ ! -f .env.production ]; then
-    echo "Creating .env.production from example..."
-    cp .env.production.example .env.production
+# Check if .env exists
+if [ ! -f .env ]; then
+    echo "Creating .env from example..."
+    cp .env.prod.example .env
 
     # Generate secret key
     if command -v openssl &> /dev/null; then
         SECRET_KEY=$(openssl rand -hex 32)
-        sed -i "s/your-secret-key-here-generate-with-openssl-rand-hex-32/$SECRET_KEY/" .env.production
+        sed -i "s/CHANGE_THIS_TO_A_LONG_RANDOM_SECRET_KEY/$SECRET_KEY/" .env
         echo "✓ Generated SECRET_KEY"
     fi
 
     # Generate postgres password
     POSTGRES_PASSWORD=$(openssl rand -base64 32 | tr -d "=+/" | cut -c1-25)
-    sed -i "s/your-secure-password-here/$POSTGRES_PASSWORD/" .env.production
+    sed -i "s/CHANGE_THIS_TO_A_STRONG_PASSWORD/$POSTGRES_PASSWORD/" .env
     echo "✓ Generated POSTGRES_PASSWORD"
 
     echo ""
-    echo "⚠️  IMPORTANT: Edit .env.production and update:"
-    echo "   - CORS_ORIGINS with your domain"
+    echo "⚠️  IMPORTANT: Edit .env and update:"
+    echo "   - APP_URL with your domain"
+    echo "   - Topology (COMPOSE_FILE / COMPOSE_PROFILES) - own reverse proxy,"
+    echo "     bundled gateway, or gateway + Cloudflare tunnel"
     echo ""
-    read -p "Press Enter to edit .env.production now, or Ctrl+C to cancel..."
-    ${EDITOR:-nano} .env.production
-fi
-
-# Check if frontend/.env exists
-if [ ! -f frontend/.env ]; then
-    echo "Creating frontend/.env..."
-    cat > frontend/.env << 'EOF'
-VITE_API_URL=/api
-EOF
-    echo "✓ Created frontend/.env"
+    read -p "Press Enter to edit .env now, or Ctrl+C to cancel..."
+    ${EDITOR:-nano} .env
 fi
 
 # Create required directories
@@ -72,9 +65,10 @@ fi
 # Build and start services
 echo ""
 echo "Starting services..."
-docker compose -f docker-compose.prod.yml --env-file .env.production down 2>/dev/null || true
-docker compose -f docker-compose.prod.yml --env-file .env.production build --no-cache
-docker compose -f docker-compose.prod.yml --env-file .env.production up -d
+# Compose file and profiles are selected by COMPOSE_FILE/COMPOSE_PROFILES in .env
+docker compose down 2>/dev/null || true
+docker compose build --no-cache
+docker compose up -d
 
 echo ""
 echo "Waiting for services to start..."
@@ -83,14 +77,14 @@ sleep 10
 # Check if services are running
 echo ""
 echo "Checking services..."
-docker compose -f docker-compose.prod.yml ps
+docker compose ps
 
 # Run database migrations
 echo ""
 echo "Running database migrations..."
 docker exec reknir-backend alembic upgrade head || {
     echo "⚠️  Migration failed. Check backend logs:"
-    echo "   docker compose -f docker-compose.prod.yml logs backend"
+    echo "   docker compose logs backend"
 }
 
 # Test local endpoints
@@ -127,10 +121,10 @@ echo "2. Configure DNS to point to your tunnel"
 echo "3. Access your application at https://your-domain.com"
 echo ""
 echo "Useful commands:"
-echo "  - View logs:    docker compose -f docker-compose.prod.yml logs -f"
-echo "  - Stop:         docker compose -f docker-compose.prod.yml down"
-echo "  - Restart:      docker compose -f docker-compose.prod.yml restart"
-echo "  - Status:       docker compose -f docker-compose.prod.yml ps"
+echo "  - View logs:    docker compose logs -f"
+echo "  - Stop:         docker compose down"
+echo "  - Restart:      docker compose restart"
+echo "  - Status:       docker compose ps"
 echo ""
 echo "Full deployment guide: docs/DEPLOYMENT.md"
 echo "=================================="

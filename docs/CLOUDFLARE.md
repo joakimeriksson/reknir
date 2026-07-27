@@ -25,7 +25,7 @@ This guide explains how to deploy Reknir to a server and make it accessible via 
 ### Cloudflare Requirements
 - Cloudflare account (free tier works)
 - Domain name managed by Cloudflare
-- For Cloudflare Tunnel: cloudflared installed
+- For Cloudflare Tunnel: nothing extra - it runs in Docker
 
 ### Software Installation
 ```bash
@@ -53,356 +53,20 @@ sudo chown -R $USER:$USER reknir
 cd reknir
 ```
 
-### 2. Create Production Docker Compose File
+### 2. Configure Environment
 
-Create `docker-compose.prod.yml`:
-
-```yaml
-services:
-  postgres:
-    image: postgres:16-alpine
-    container_name: reknir-db
-    environment:
-      POSTGRES_USER: ${POSTGRES_USER:-reknir}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}  # Set in .env file!
-      POSTGRES_DB: ${POSTGRES_DB:-reknir}
-      PGDATA: /var/lib/postgresql/data/pgdata
-    volumes:
-      - postgres_data:/var/lib/postgresql/data
-      - ./backups:/backups
-    # DO NOT expose port 5432 in production unless needed for backups
-    # ports:
-    #   - "5432:5432"
-    healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U reknir"]
-      interval: 10s
-      timeout: 5s
-      retries: 5
-    restart: unless-stopped
-    networks:
-      - reknir-internal
-
-  backend:
-    build:
-      context: ./backend
-      dockerfile: Dockerfile.prod
-    container_name: reknir-backend
-    environment:
-      DATABASE_URL: postgresql://${POSTGRES_USER:-reknir}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-reknir}
-      CORS_ORIGINS: ${CORS_ORIGINS}  # Set to your domain
-      DEBUG: "False"
-      SECRET_KEY: ${SECRET_KEY}  # Generate a strong secret key
-    # DO NOT expose port 8000 directly - use reverse proxy
-    expose:
-      - "8000"
-    depends_on:
-      postgres:
-        condition: service_healthy
-    volumes:
-      - ./database:/database
-      - ./backups:/backups
-    restart: unless-stopped
-    networks:
-      - reknir-internal
-    command: uvicorn app.main:app --host 0.0.0.0 --port 8000 --workers 4
-
-  frontend:
-    build:
-      context: ./frontend
-      dockerfile: Dockerfile.prod
-    container_name: reknir-frontend
-    expose:
-      - "80"
-    depends_on:
-      - backend
-    restart: unless-stopped
-    networks:
-      - reknir-internal
-
-  # Nginx reverse proxy
-  nginx:
-    image: nginx:alpine
-    container_name: reknir-nginx
-    ports:
-      - "80:80"
-      - "443:443"
-    volumes:
-      - ./nginx/nginx.conf:/etc/nginx/nginx.conf:ro
-      - ./nginx/ssl:/etc/nginx/ssl:ro
-    depends_on:
-      - backend
-      - frontend
-    restart: unless-stopped
-    networks:
-      - reknir-internal
-
-  # Automatic backup service (runs daily at 3 AM)
-  backup:
-    image: postgres:16-alpine
-    container_name: reknir-backup
-    environment:
-      POSTGRES_USER: ${POSTGRES_USER:-reknir}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
-      POSTGRES_DB: ${POSTGRES_DB:-reknir}
-      BACKUP_DIR: /backups
-      BACKUP_KEEP_DAYS: 2555  # 7 years per Swedish law
-    volumes:
-      - ./backups:/backups
-      - ./scripts/backup.sh:/backup.sh
-    depends_on:
-      - postgres
-    entrypoint: /bin/sh -c "while true; do sleep 86400; /backup.sh; done"
-    restart: unless-stopped
-    networks:
-      - reknir-internal
-
-  # Cloudflare Tunnel (optional - for production public access)
-  cloudflared:
-    image: cloudflare/cloudflared:latest
-    container_name: reknir-cloudflared
-    command: tunnel run
-    environment:
-      TUNNEL_TOKEN: ${TUNNEL_TOKEN}  # Set in .env.prod after creating tunnel
-    restart: unless-stopped
-    networks:
-      - reknir-internal
-    depends_on:
-      - nginx
-    # Note: This container needs no exposed ports!
-    # It creates an outbound connection to Cloudflare
-
-volumes:
-  postgres_data:
-    driver: local
-
-networks:
-  reknir-internal:
-    driver: bridge
-```
-
-### 3. Create Production Dockerfiles
-
-**backend/Dockerfile.prod**:
-```dockerfile
-FROM python:3.11-slim
-
-WORKDIR /app
-
-# Install system dependencies
-RUN apt-get update && apt-get install -y \
-    gcc \
-    postgresql-client \
-    && rm -rf /var/lib/apt/lists/*
-
-# Copy requirements and install Python dependencies
-COPY requirements.txt .
-RUN pip install --no-cache-dir -r requirements.txt
-
-# Copy application code
-COPY . .
-
-# Create non-root user
-RUN useradd -m -u 1000 reknir && chown -R reknir:reknir /app
-USER reknir
-
-# Run migrations and start server
-CMD alembic upgrade head && uvicorn app.main:app --host 0.0.0.0 --port 8000 --workers 4
-```
-
-**frontend/Dockerfile.prod**:
-```dockerfile
-# Build stage
-FROM node:20-alpine AS builder
-
-WORKDIR /app
-
-# Copy package files
-COPY package*.json ./
-RUN npm ci
-
-# Copy source code
-COPY . .
-
-# Build for production
-RUN npm run build
-
-# Production stage
-FROM nginx:alpine
-
-# Copy built files
-COPY --from=builder /app/dist /usr/share/nginx/html
-
-# Copy nginx config (we'll create this)
-COPY nginx.conf /etc/nginx/conf.d/default.conf
-
-EXPOSE 80
-
-CMD ["nginx", "-g", "daemon off;"]
-```
-
-**frontend/nginx.conf**:
-```nginx
-server {
-    listen 80;
-    server_name _;
-    root /usr/share/nginx/html;
-    index index.html;
-
-    # Gzip compression
-    gzip on;
-    gzip_types text/plain text/css application/json application/javascript text/xml application/xml application/xml+rss text/javascript;
-
-    # SPA routing - serve index.html for all routes
-    location / {
-        try_files $uri $uri/ /index.html;
-    }
-
-    # Cache static assets
-    location ~* \.(js|css|png|jpg|jpeg|gif|ico|svg|woff|woff2|ttf|eot)$ {
-        expires 1y;
-        add_header Cache-Control "public, immutable";
-    }
-}
-```
-
-### 4. Create Nginx Reverse Proxy Configuration
-
-Create `nginx/nginx.conf`:
-
-```nginx
-events {
-    worker_connections 1024;
-}
-
-http {
-    # Rate limiting
-    limit_req_zone $binary_remote_addr zone=api_limit:10m rate=10r/s;
-    limit_req_zone $binary_remote_addr zone=general_limit:10m rate=30r/s;
-
-    # Upstream backends
-    upstream backend {
-        server backend:8000;
-    }
-
-    upstream frontend {
-        server frontend:80;
-    }
-
-    server {
-        listen 80;
-        server_name _;
-
-        # Security headers
-        add_header X-Frame-Options "SAMEORIGIN" always;
-        add_header X-Content-Type-Options "nosniff" always;
-        add_header X-XSS-Protection "1; mode=block" always;
-        add_header Referrer-Policy "strict-origin-when-cross-origin" always;
-
-        # Max upload size for SIE4 files and invoices
-        client_max_body_size 10M;
-
-        # API endpoints
-        location /api/ {
-            limit_req zone=api_limit burst=20 nodelay;
-
-            proxy_pass http://backend;
-            proxy_set_header Host $host;
-            proxy_set_header X-Real-IP $remote_addr;
-            proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
-            proxy_set_header X-Forwarded-Proto $scheme;
-
-            # Timeouts
-            proxy_connect_timeout 60s;
-            proxy_send_timeout 60s;
-            proxy_read_timeout 60s;
-        }
-
-        # API docs
-        location /docs {
-            proxy_pass http://backend;
-            proxy_set_header Host $host;
-            proxy_set_header X-Real-IP $remote_addr;
-        }
-
-        location /redoc {
-            proxy_pass http://backend;
-            proxy_set_header Host $host;
-            proxy_set_header X-Real-IP $remote_addr;
-        }
-
-        # Frontend
-        location / {
-            limit_req zone=general_limit burst=50 nodelay;
-
-            proxy_pass http://frontend;
-            proxy_set_header Host $host;
-            proxy_set_header X-Real-IP $remote_addr;
-            proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
-            proxy_set_header X-Forwarded-Proto $scheme;
-        }
-    }
-
-    # HTTPS configuration (optional - Cloudflare handles SSL)
-    # server {
-    #     listen 443 ssl http2;
-    #     server_name your-domain.com;
-    #
-    #     ssl_certificate /etc/nginx/ssl/cert.pem;
-    #     ssl_certificate_key /etc/nginx/ssl/key.pem;
-    #     ssl_protocols TLSv1.2 TLSv1.3;
-    #     ssl_ciphers HIGH:!aNULL:!MD5;
-    #
-    #     # ... rest of config same as port 80
-    # }
-}
-```
-
-### 5. Create Production Environment File
-
-Create `.env.prod`:
+Everything needed ships with the repo: `docker-compose.prod.yml` (postgres,
+backend, frontend, the nginx gateway and an opt-in Cloudflare Tunnel),
+production Dockerfiles and nginx configs.
 
 ```bash
-# Database
-POSTGRES_USER=reknir
-POSTGRES_PASSWORD=CHANGE_THIS_STRONG_PASSWORD_123!
-POSTGRES_DB=reknir
-
-# Backend
-SECRET_KEY=GENERATE_A_LONG_RANDOM_SECRET_KEY_HERE
-DEBUG=False
-CORS_ORIGINS=https://your-domain.com
-
-# Frontend (used during build)
-VITE_API_URL=https://your-domain.com
-
-# Backup
-BACKUP_KEEP_DAYS=2555
-
-# Cloudflare Tunnel (optional - only needed if using Cloudflare Tunnel in Docker)
-TUNNEL_TOKEN=your_tunnel_token_from_cloudflare_dashboard
+cp .env.prod.example .env
+nano .env   # set POSTGRES_PASSWORD, SECRET_KEY, APP_URL
 ```
 
-**Generate strong passwords:**
-```bash
-# Generate PostgreSQL password
-openssl rand -base64 32
-
-# Generate secret key
-openssl rand -hex 32
-```
-
-### 6. Update Frontend API URL
-
-Update `frontend/src/services/api.ts` to use relative URLs in production:
-
-```typescript
-const API_BASE_URL = import.meta.env.VITE_API_URL || ''
-```
-
-Or create `frontend/.env.production`:
-```bash
-VITE_API_URL=https://your-domain.com
-```
+The gateway publishes one port (`NGINX_PORT`, default 80) and routes `/` to
+the frontend and `/api` to the backend. `CORS_ORIGINS` and `VITE_API_URL`
+are derived automatically from `APP_URL`.
 
 ---
 
@@ -443,17 +107,18 @@ In the tunnel configuration:
   - **URL:** nginx:80 (or http://nginx:80)
 - Click **Save**
 
-**3. Add Tunnel Token to .env.prod**
+**3. Add Tunnel Token to .env**
 
-Add to your `.env.prod` file:
+Add to your `.env` file:
 ```bash
+COMPOSE_PROFILES=tunnel
 TUNNEL_TOKEN=your_tunnel_token_here
 ```
 
 **4. Start All Services (Including Cloudflared)**
 
 ```bash
-docker compose -f docker-compose.prod.yml --env-file .env.prod up -d
+docker compose up -d
 ```
 
 That's it! The cloudflared container will:
@@ -466,10 +131,10 @@ That's it! The cloudflared container will:
 
 ```bash
 # Check all containers are running
-docker compose -f docker-compose.prod.yml ps
+docker compose ps
 
 # Check cloudflared logs
-docker compose -f docker-compose.prod.yml logs cloudflared
+docker compose logs cloudflared
 ```
 
 Visit `https://your-domain.com` - you should see Reknir!
@@ -520,7 +185,7 @@ cloudflared tunnel route dns reknir your-domain.com
 
 ```bash
 # Start Reknir (without cloudflared service in docker-compose)
-docker compose -f docker-compose.prod.yml --env-file .env.prod up -d
+docker compose up -d
 
 # Install and start cloudflared as system service
 sudo cloudflared service install
@@ -528,7 +193,7 @@ sudo systemctl start cloudflared
 sudo systemctl enable cloudflared
 ```
 
-**Note:** With this method, remove or comment out the `cloudflared` service from your `docker-compose.prod.yml`.
+**Note:** With this method, simply leave `COMPOSE_PROFILES=tunnel` unset in `.env` - the bundled cloudflared service then never starts.
 
 ---
 
@@ -536,7 +201,7 @@ sudo systemctl enable cloudflared
 
 **For Docker method:**
 ```bash
-docker compose -f docker-compose.prod.yml logs cloudflared
+docker compose logs cloudflared
 ```
 
 **For host installation:**
@@ -632,7 +297,7 @@ Same as Cloudflare Tunnel option above.
 ### Start Services
 
 ```bash
-docker compose -f docker-compose.prod.yml --env-file .env.prod up -d
+docker compose up -d
 ```
 
 ### Verify
@@ -777,6 +442,7 @@ ssh -L 5173:localhost:5173 -L 8000:localhost:8000 user@your-server.com
 
 # 2. On server, start development environment
 cd /opt/reknir
+cp .env.dev.example .env   # first time only – selects the dev stack
 docker compose up -d
 
 # 3. On your local machine (in a new terminal), access:
@@ -825,7 +491,7 @@ ssh user@your-server.com
 openssl rand -base64 32
 ```
 
-Update `.env.prod` with strong passwords.
+Update `.env` with strong passwords.
 
 ### 2. Firewall Rules
 
@@ -877,8 +543,8 @@ sudo apt-get update && sudo apt-get upgrade -y
 # Update Docker images
 cd /opt/reknir
 git pull
-docker compose -f docker-compose.prod.yml --env-file .env.prod build
-docker compose -f docker-compose.prod.yml --env-file .env.prod up -d
+docker compose build
+docker compose up -d
 ```
 
 ### 5. Backup Strategy
@@ -891,7 +557,7 @@ Backups are automatically created daily and stored for 7 years (Swedish law requ
 ls -lh backups/
 
 # Test restore (on a test database!)
-docker compose -f docker-compose.prod.yml exec postgres psql -U reknir -d reknir < backups/reknir_backup_YYYYMMDD.sql
+docker compose exec postgres psql -U reknir -d reknir < backups/reknir_backup_YYYYMMDD.sql
 ```
 
 **Off-site backup:**
@@ -917,13 +583,7 @@ Set up monitoring for:
 
 ### 8. Environment Variables
 
-Never commit `.env.prod` to git!
-
-Add to `.gitignore`:
-```bash
-echo ".env.prod" >> .gitignore
-echo "*.env.prod" >> .gitignore
-```
+Never commit `.env` to git! (It is already listed in the repo's `.gitignore`.)
 
 ### 9. Rate Limiting
 
@@ -941,51 +601,52 @@ Adjust these in `nginx/nginx.conf` based on your needs.
 
 **Check if containers are running:**
 ```bash
-docker compose -f docker-compose.prod.yml ps
+docker compose ps
 ```
 
 **Check logs:**
 ```bash
 # All logs
-docker compose -f docker-compose.prod.yml logs
+docker compose logs
 
 # Specific service
-docker compose -f docker-compose.prod.yml logs backend
-docker compose -f docker-compose.prod.yml logs nginx
+docker compose logs backend
+docker compose logs nginx
 ```
 
 **Restart services:**
 ```bash
-docker compose -f docker-compose.prod.yml restart
+docker compose restart
 ```
 
 ### Issue: CORS Errors
 
-Update `CORS_ORIGINS` in `.env.prod`:
+Check `APP_URL` in `.env` (CORS is derived from it), or set
+`CORS_ORIGINS` explicitly:
 ```bash
 CORS_ORIGINS=https://your-domain.com,https://www.your-domain.com
 ```
 
 Restart backend:
 ```bash
-docker compose -f docker-compose.prod.yml restart backend
+docker compose restart backend
 ```
 
 ### Issue: Database Connection Failed
 
 **Check database is healthy:**
 ```bash
-docker compose -f docker-compose.prod.yml exec postgres pg_isready -U reknir
+docker compose exec postgres pg_isready -U reknir
 ```
 
 **Check DATABASE_URL is correct:**
 ```bash
-docker compose -f docker-compose.prod.yml exec backend env | grep DATABASE_URL
+docker compose exec backend env | grep DATABASE_URL
 ```
 
 **Check database logs:**
 ```bash
-docker compose -f docker-compose.prod.yml logs postgres
+docker compose logs postgres
 ```
 
 ### Issue: Cloudflare Tunnel Not Connecting
@@ -1016,12 +677,12 @@ This usually means nginx can't reach the backend.
 
 **Check if backend is responding:**
 ```bash
-docker compose -f docker-compose.prod.yml exec nginx curl http://backend:8000
+docker compose exec nginx curl http://backend:8000
 ```
 
 **Check nginx logs:**
 ```bash
-docker compose -f docker-compose.prod.yml logs nginx
+docker compose logs nginx
 ```
 
 ### Issue: SSL/TLS Errors
@@ -1054,12 +715,12 @@ Recommended: `workers = (2 × CPU cores) + 1`
 
 **Vacuum database (monthly):**
 ```bash
-docker compose -f docker-compose.prod.yml exec postgres psql -U reknir -d reknir -c "VACUUM ANALYZE;"
+docker compose exec postgres psql -U reknir -d reknir -c "VACUUM ANALYZE;"
 ```
 
 **Check database size:**
 ```bash
-docker compose -f docker-compose.prod.yml exec postgres psql -U reknir -d reknir -c "SELECT pg_size_pretty(pg_database_size('reknir'));"
+docker compose exec postgres psql -U reknir -d reknir -c "SELECT pg_size_pretty(pg_database_size('reknir'));"
 ```
 
 ---
@@ -1071,33 +732,33 @@ docker compose -f docker-compose.prod.yml exec postgres psql -U reknir -d reknir
 ```bash
 cd /opt/reknir
 git pull
-docker compose -f docker-compose.prod.yml --env-file .env.prod build
-docker compose -f docker-compose.prod.yml --env-file .env.prod up -d
+docker compose build
+docker compose up -d
 ```
 
 ### View Logs
 
 ```bash
 # All logs
-docker compose -f docker-compose.prod.yml logs -f
+docker compose logs -f
 
 # Last 100 lines
-docker compose -f docker-compose.prod.yml logs --tail=100
+docker compose logs --tail=100
 
 # Specific service
-docker compose -f docker-compose.prod.yml logs -f backend
+docker compose logs -f backend
 ```
 
 ### Backup Database Manually
 
 ```bash
-docker compose -f docker-compose.prod.yml exec postgres pg_dump -U reknir reknir > backup_$(date +%Y%m%d_%H%M%S).sql
+docker compose exec postgres pg_dump -U reknir reknir > backup_$(date +%Y%m%d_%H%M%S).sql
 ```
 
 ### Restore Database
 
 ```bash
-docker compose -f docker-compose.prod.yml exec -T postgres psql -U reknir reknir < backup_20241110_120000.sql
+docker compose exec -T postgres psql -U reknir reknir < backup_20241110_120000.sql
 ```
 
 ### Clean Up Docker
@@ -1123,14 +784,13 @@ docker network prune
 - [ ] Configure SSH access (key-based auth, disable password login)
 - [ ] Configure firewall: `sudo ufw allow 22/tcp` (only SSH needed!)
 - [ ] Clone repository to `/opt/reknir`
-- [ ] Create production Dockerfiles and configs
-- [ ] Create `.env.prod` with strong passwords
+- [ ] Create `.env` from `.env.prod.example` with strong passwords
 - [ ] Go to Cloudflare Zero Trust Dashboard → Networks → Tunnels
 - [ ] Create tunnel named `reknir` and copy the tunnel token
-- [ ] Add tunnel token to `.env.prod` as `TUNNEL_TOKEN=...`
+- [ ] Add `COMPOSE_PROFILES=tunnel` and `TUNNEL_TOKEN=...` to `.env`
 - [ ] Configure Public Hostname in Cloudflare: your-domain.com → http://nginx:80
-- [ ] Start all services: `docker compose -f docker-compose.prod.yml --env-file .env.prod up -d`
-- [ ] Verify: `docker compose -f docker-compose.prod.yml logs cloudflared`
+- [ ] Start all services: `docker compose up -d`
+- [ ] Verify: `docker compose logs cloudflared`
 - [ ] Configure Cloudflare dashboard (SSL: Full, Always HTTPS: On)
 - [ ] Install fail2ban for SSH protection
 - [ ] Test: Visit `https://your-domain.com`
@@ -1144,10 +804,9 @@ docker network prune
 - [ ] Configure firewall: `sudo ufw allow 22/tcp && sudo ufw allow 80/tcp && sudo ufw allow 443/tcp`
 - [ ] Configure port forwarding on router (ports 22, 80, 443)
 - [ ] Clone repository to `/opt/reknir`
-- [ ] Create production Dockerfiles and configs
-- [ ] Create `.env.prod` with strong passwords
+- [ ] Create `.env` from `.env.prod.example` with strong passwords
 - [ ] Add A record in Cloudflare DNS (proxied)
-- [ ] Start services: `docker compose -f docker-compose.prod.yml --env-file .env.prod up -d`
+- [ ] Start services: `docker compose up -d`
 - [ ] Configure Cloudflare dashboard (SSL: Full, Always HTTPS: On)
 - [ ] Install fail2ban for SSH protection
 - [ ] Test: Visit `https://your-domain.com`

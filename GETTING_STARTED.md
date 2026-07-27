@@ -21,6 +21,9 @@ OR for local development:
 # Clone the repository (if not already done)
 cd reknir
 
+# Create your env file (selects the dev stack via COMPOSE_FILE)
+cp .env.dev.example .env
+
 # Start all services (database, backend, frontend)
 docker compose up -d
 

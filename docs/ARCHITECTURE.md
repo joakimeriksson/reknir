@@ -51,7 +51,7 @@ Reknir is a three-tier application:
 
 **Port configuration:**
 ```yaml
-# docker-compose.yml
+# docker-compose.dev.yml
 frontend:
   ports:
     - "5173:5173"  # Vite dev server

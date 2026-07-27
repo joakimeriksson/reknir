@@ -31,6 +31,9 @@ Modern, self-hosted bookkeeping system for Swedish businesses with full BAS kont
 git clone <repo-url>
 cd reknir
 
+# Create your env file (selects the dev stack via COMPOSE_FILE)
+cp .env.dev.example .env
+
 # Start all services
 docker compose up -d
 
@@ -162,7 +165,7 @@ reknir/
 ├── backups/              # Database backup storage
 ├── scripts/              # Utility scripts
 ├── nginx/                # Nginx reverse proxy config
-├── docker-compose.yml    # Development containers
+├── docker-compose.dev.yml   # Development containers
 └── docker-compose.prod.yml  # Production containers
 ```
 
