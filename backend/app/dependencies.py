@@ -37,18 +37,13 @@ async def get_current_user(token: str = Depends(oauth2_scheme), db: Session = De
     # Decode token
     token_data = decode_access_token(token)
     if token_data is None:
-        print(f"DEBUG: Token decode failed for token: {token[:20]}...")
         raise credentials_exception
-
-    print(f"DEBUG: Token decoded successfully. user_id={token_data.user_id}, email={token_data.email}")
 
     # Get user from database
     user = db.query(User).filter(User.id == token_data.user_id).first()
     if user is None:
-        print(f"DEBUG: User not found with id={token_data.user_id}")
         raise credentials_exception
 
-    print(f"DEBUG: User found: {user.email}")
     return user
 
 
