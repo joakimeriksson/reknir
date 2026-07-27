@@ -203,7 +203,10 @@ def assign_verifications_to_fiscal_year(
 
 @router.post("/{fiscal_year_id}/copy-chart-of-accounts", status_code=status.HTTP_200_OK)
 def copy_chart_of_accounts(
-    fiscal_year_id: int, source_fiscal_year_id: int | None = None, db: Session = Depends(get_db)
+    fiscal_year_id: int,
+    source_fiscal_year_id: int | None = None,
+    current_user: User = Depends(get_current_active_user),
+    db: Session = Depends(get_db),
 ):
     """
     Copy chart of accounts from a previous fiscal year to this fiscal year.
@@ -213,6 +216,11 @@ def copy_chart_of_accounts(
     target_fiscal_year = db.query(FiscalYear).filter(FiscalYear.id == fiscal_year_id).first()
     if not target_fiscal_year:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=f"Fiscal year {fiscal_year_id} not found")
+
+    # Verify access
+    company_ids = get_user_company_ids(current_user, db)
+    if target_fiscal_year.company_id not in company_ids:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="You don't have access to this fiscal year")
 
     # Check if target fiscal year already has accounts
     existing_accounts_count = db.query(Account).filter(Account.fiscal_year_id == fiscal_year_id).count()

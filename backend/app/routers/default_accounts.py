@@ -73,8 +73,15 @@ class DefaultAccountCreate(BaseModel):
 
 
 @router.post("/", response_model=DefaultAccountResponse, status_code=status.HTTP_201_CREATED)
-def create_default_account(create: DefaultAccountCreate, db: Session = Depends(get_db)):
+def create_default_account(
+    create: DefaultAccountCreate, current_user: User = Depends(get_current_active_user), db: Session = Depends(get_db)
+):
     """Create a new default account mapping"""
+    # Verify access
+    company_ids = get_user_company_ids(current_user, db)
+    if create.company_id not in company_ids:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="You don't have access to this company")
+
     # Verify the account exists
     account = db.query(Account).filter(Account.id == create.account_id).first()
     if not account:
@@ -117,7 +124,12 @@ def create_default_account(create: DefaultAccountCreate, db: Session = Depends(g
 
 
 @router.patch("/{default_account_id}", response_model=DefaultAccountResponse)
-def update_default_account(default_account_id: int, update: DefaultAccountUpdate, db: Session = Depends(get_db)):
+def update_default_account(
+    default_account_id: int,
+    update: DefaultAccountUpdate,
+    current_user: User = Depends(get_current_active_user),
+    db: Session = Depends(get_db),
+):
     """Update a default account mapping"""
     # Find the default account
     default = db.query(DefaultAccount).filter(DefaultAccount.id == default_account_id).first()
@@ -125,6 +137,11 @@ def update_default_account(default_account_id: int, update: DefaultAccountUpdate
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND, detail=f"Default account {default_account_id} not found"
         )
+
+    # Verify access
+    company_ids = get_user_company_ids(current_user, db)
+    if default.company_id not in company_ids:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="You don't have access to this company")
 
     # Verify the new account exists and belongs to the same company
     account = db.query(Account).filter(Account.id == update.account_id).first()
@@ -151,13 +168,20 @@ def update_default_account(default_account_id: int, update: DefaultAccountUpdate
 
 
 @router.delete("/{default_account_id}", status_code=status.HTTP_204_NO_CONTENT)
-def delete_default_account(default_account_id: int, db: Session = Depends(get_db)):
+def delete_default_account(
+    default_account_id: int, current_user: User = Depends(get_current_active_user), db: Session = Depends(get_db)
+):
     """Delete a default account mapping"""
     default = db.query(DefaultAccount).filter(DefaultAccount.id == default_account_id).first()
     if not default:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND, detail=f"Default account {default_account_id} not found"
         )
+
+    # Verify access
+    company_ids = get_user_company_ids(current_user, db)
+    if default.company_id not in company_ids:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="You don't have access to this company")
 
     db.delete(default)
     db.commit()
