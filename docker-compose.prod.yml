@@ -37,6 +37,7 @@ services:
     volumes:
       - ./uploads:/app/uploads
       - ./backups:/backups
+      - ./database:/database:ro # seed data (BAS accounts, posting templates)
     restart: unless-stopped
     networks:
       - reknir-internal

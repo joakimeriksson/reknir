@@ -261,6 +261,12 @@ def restore_from_archive(archive_path: Path, performed_by: str) -> RestoreResult
 
         result.stages_completed.append("swap")
 
+        # Every pooled connection was just terminated as part of the swap;
+        # drop the pool so later requests get fresh connections immediately.
+        from app.database import engine as app_engine
+
+        app_engine.dispose()
+
         # ---- Stage 10: Log restore event ----
         _log_restore_event(
             backup_filename=result.backup_filename,
