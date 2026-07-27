@@ -6,6 +6,7 @@ from sqlalchemy.orm import Session
 from app.models.account import Account
 from app.models.expense import Expense
 from app.models.verification import TransactionLine, Verification
+from app.services.invoice_service import get_fiscal_year_for_date
 
 
 def create_expense_verification(
@@ -21,6 +22,9 @@ def create_expense_verification(
     Credit: 2890 Upplupna kostnader eller annan skuldkonto (Employee payable)
     """
 
+    # Get fiscal year for this expense date
+    fiscal_year = get_fiscal_year_for_date(db, expense.company_id, expense.expense_date)
+
     # Get next verification number
     from app.routers.verifications import get_next_verification_number
 
@@ -29,6 +33,7 @@ def create_expense_verification(
     # Create verification
     verification = Verification(
         company_id=expense.company_id,
+        fiscal_year_id=fiscal_year.id,
         verification_number=ver_number,
         series="A",
         transaction_date=expense.expense_date,
@@ -110,6 +115,9 @@ def create_expense_payment_verification(
     Credit: Bank account (e.g., 1930 Företagskonto)
     """
 
+    # Get fiscal year for the payment date
+    fiscal_year = get_fiscal_year_for_date(db, expense.company_id, paid_date)
+
     # Get next verification number
     from app.routers.verifications import get_next_verification_number
 
@@ -118,6 +126,7 @@ def create_expense_payment_verification(
     # Create verification
     verification = Verification(
         company_id=expense.company_id,
+        fiscal_year_id=fiscal_year.id,
         verification_number=ver_number,
         series="A",
         transaction_date=paid_date,
