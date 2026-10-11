@@ -113,6 +113,16 @@ export interface VerificationGap {
   explanation: string | null
 }
 
+export interface Deadline {
+  kind: 'vat' | 'ink2' | 'annual_report' | 'annual_meeting'
+  title: string
+  period_start: string | null
+  period_end: string | null
+  due: string
+  status: 'open' | 'locked' | 'past'
+  days_left: number
+}
+
 export interface PeriodLockEntry {
   id: number
   locked_through: string

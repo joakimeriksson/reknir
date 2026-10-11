@@ -45,6 +45,7 @@ import type {
   VerificationGap,
   PeriodLockStatus,
   PeriodLockEntry,
+  Deadline,
   AuditLogEntry,
   AgingReport,
   CashFlowReport,
@@ -94,6 +95,7 @@ export const companyApi = {
   update: (id: number, data: Partial<Company>) => api.patch<Company>(`/companies/${id}`, data),
   delete: (id: number) => api.delete(`/companies/${id}`),
   periodLocks: (id: number) => api.get<PeriodLockStatus>(`/companies/${id}/period-locks`),
+  deadlines: (id: number) => api.get<Deadline[]>(`/companies/${id}/deadlines`),
   lockPeriod: (id: number, data: { locked_through: string; note?: string }) =>
     api.post<PeriodLockEntry>(`/companies/${id}/period-locks`, data),
   initializeDefaults: (id: number, fiscalYearId?: number) =>

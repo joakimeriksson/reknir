@@ -12,12 +12,13 @@ from sqlalchemy.orm import Session
 from app.database import get_db
 from app.dependencies import get_current_active_user, verify_company_access
 from app.models.account import Account
+from app.models.company import Company
 from app.models.expense import Expense, ExpenseStatus
 from app.models.fiscal_year import FiscalYear
 from app.models.invoice import Invoice, InvoiceStatus, PaymentStatus
 from app.models.user import User
 from app.models.verification import TransactionLine, Verification
-from app.services import ledger_service
+from app.services import deadline_service, ledger_service
 
 router = APIRouter(prefix="/api/dashboard", tags=["dashboard"])
 
@@ -374,5 +375,12 @@ async def get_dashboard_overview(
             g for g in ledger_service.find_gaps(db, company_id, fiscal_year.id) if not g["explanation"]
         ],
         "locked_through": (lock.isoformat() if (lock := ledger_service.locked_through(db, company_id)) else None),
+        "deadlines": [
+            d.as_dict()
+            for d in deadline_service.upcoming_deadlines(
+                db, db.query(Company).get(company_id), horizon_days=120, include_past_days=30
+            )
+            if d.status != "locked"
+        ][:4],
         "monthly_trend": trend_data,
     }

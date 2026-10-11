@@ -68,6 +68,17 @@ reversal links are all part of the portable archive, so a restore keeps them.
 
 Both under **Rapporter**.
 
+## 7. Deadlines
+
+    GET /api/companies/{id}/deadlines
+
+Computed from the company's VAT period and fiscal years, nothing is downloaded:
+VAT declarations (12th of the second month after the period, 17 August for the
+June period, moved past weekends, public holidays and the eves Skatteverket
+treats as holidays), and for an AB the INK2 return, the årsredovisning to
+Bolagsverket (7 months after year end) and the årsstämma (6 months). Shown on
+the dashboard with days left; a deadline turns green once its period is locked.
+
 ## Still by convention, not enforced
 
 - 7-year retention of attachments (deletion is possible for unlinked files).
