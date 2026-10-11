@@ -766,10 +766,16 @@ def _load_company(
             )
     for v in data.verifications:
         if v.reverses_verification_id is not None or v.reversed_by_verification_id is not None:
-            obj = db.query(Verification).get(ver_map.get_required(v.id))
-            obj.reverses_verification_id = ver_map.get_optional(v.reverses_verification_id)
-            obj.reversed_by_verification_id = ver_map.get_optional(v.reversed_by_verification_id)
-            obj.updated_at = _naive(v.updated_at)
+            # Core-level update with updated_at given explicitly, so the column's
+            # onupdate does not stamp a new time on an imported row.
+            db.query(Verification).filter(Verification.id == ver_map.get_required(v.id)).update(
+                {
+                    "reverses_verification_id": ver_map.get_optional(v.reverses_verification_id),
+                    "reversed_by_verification_id": ver_map.get_optional(v.reversed_by_verification_id),
+                    "updated_at": _naive(v.updated_at),
+                },
+                synchronize_session=False,
+            )
     db.flush()
     report.bump("verifications", len(data.verifications))
 

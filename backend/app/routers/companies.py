@@ -18,7 +18,7 @@ from app.models.user import CompanyUser, User
 from app.models.verification import Verification
 from app.schemas.company import CompanyCreate, CompanyResponse, CompanyUpdate
 from app.schemas.compliance import PeriodLockCreate, PeriodLockResponse, PeriodLockStatus
-from app.services import company_service, default_account_service, ledger_service
+from app.services import company_service, deadline_service, default_account_service, ledger_service
 from app.services.storage import LOGOS_DIR
 
 router = APIRouter()
@@ -249,6 +249,20 @@ def delete_company(
     company_service.delete_company(db, company)
     db.commit()
     return None
+
+
+@router.get("/{company_id}/deadlines")
+async def get_deadlines(
+    company_id: int,
+    current_user: User = Depends(get_current_active_user),
+    db: Session = Depends(get_db),
+):
+    """Statutory deadlines (VAT, and for an AB: INK2, årsredovisning, årsstämma), computed from settings."""
+    await verify_company_access(company_id, current_user, db)
+    company = db.query(Company).filter(Company.id == company_id).first()
+    if not company:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=f"Company {company_id} not found")
+    return [d.as_dict() for d in deadline_service.upcoming_deadlines(db, company)]
 
 
 @router.get("/{company_id}/period-locks", response_model=PeriodLockStatus)

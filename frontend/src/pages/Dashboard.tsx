@@ -9,7 +9,8 @@ import MonthVerificationsModal from '../components/MonthVerificationsModal'
 import FiscalYearSelector from '../components/FiscalYearSelector'
 import { useToast } from '@/contexts/ToastContext'
 import GapsPanel from '@/components/compliance/GapsPanel'
-import type { VerificationGap } from '@/types'
+import DeadlinesCard from '@/components/compliance/DeadlinesCard'
+import type { VerificationGap, Deadline } from '@/types'
 
 interface MonthVerification {
   id: number
@@ -24,6 +25,7 @@ interface MonthVerification {
 interface DashboardData {
   verification_gaps?: VerificationGap[]
   locked_through?: string | null
+  deadlines?: Deadline[]
   fiscal_year: {
     id: number
     label: string
@@ -245,6 +247,7 @@ export default function Dashboard() {
           onChange={() => loadDashboardData()}
         />
       )}
+      {data.deadlines && <DeadlinesCard deadlines={data.deadlines} />}
       {data.locked_through && (
         <p className="text-sm text-gray-500">Bokföringen är låst t.o.m. {data.locked_through}.</p>
       )}
