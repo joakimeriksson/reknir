@@ -7,6 +7,7 @@ import RestoreModal from '@/components/RestoreModal'
 import SIE4ImportModal from '@/components/SIE4ImportModal'
 import PeriodLockPanel from '@/components/compliance/PeriodLockPanel'
 import AuditHistory from '@/components/compliance/AuditHistory'
+import ProfilePanel from '@/components/ProfilePanel'
 import { useAuth } from '@/contexts/AuthContext'
 import { useCompany } from '@/contexts/CompanyContext'
 import { useFiscalYear } from '@/contexts/FiscalYearContext'
@@ -36,7 +37,7 @@ export default function SettingsPage() {
     template_lines: []
   })
   const [loading, setLoading] = useState(false)
-  const [activeTab, setActiveTab] = useState<'company' | 'fiscal' | 'templates' | 'import' | 'layout' | 'ai'>('company')
+  const [activeTab, setActiveTab] = useState<'company' | 'fiscal' | 'templates' | 'import' | 'layout' | 'ai' | 'profile'>('company')
   const [showCreateFiscalYear, setShowCreateFiscalYear] = useState(false)
   const [uploadingLogo, setUploadingLogo] = useState(false)
   const [logoUrl, setLogoUrl] = useState<string | null>(null)
@@ -1115,6 +1116,16 @@ export default function SettingsPage() {
           >
             Bilagor
           </button>
+          <button
+            onClick={() => setActiveTab('profile')}
+            className={`py-4 px-1 border-b-2 font-medium text-sm ${
+              activeTab === 'profile'
+                ? 'border-primary-500 text-primary-600'
+                : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+            }`}
+          >
+            Mitt konto
+          </button>
           {user?.is_admin && (
             <button
               onClick={() => {
@@ -1132,6 +1143,8 @@ export default function SettingsPage() {
           )}
         </nav>
       </div>
+
+      {activeTab === 'profile' && <ProfilePanel />}
 
       {/* Company Tab */}
       {activeTab === 'company' && (

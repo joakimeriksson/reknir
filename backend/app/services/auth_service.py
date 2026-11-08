@@ -2,6 +2,7 @@
 Authentication service for password hashing and JWT token management
 """
 
+import hashlib
 import secrets
 import uuid
 from datetime import datetime, timedelta
@@ -81,6 +82,9 @@ def decode_access_token(token: str) -> TokenData | None:
     """
     try:
         payload = jwt.decode(token, settings.secret_key, algorithms=[settings.algorithm])
+        if payload.get("purpose"):
+            # Special-purpose tokens (password reset) never grant API access
+            return None
         print(f"DEBUG: JWT payload decoded: {payload}")
         sub: str = payload.get("sub")
         email: str = payload.get("email")
@@ -151,6 +155,66 @@ def create_user(db: Session, email: str, password: str, full_name: str, is_admin
     db.refresh(user)
 
     return user
+
+
+# ==================== Password Reset ====================
+
+PASSWORD_RESET_PURPOSE = "password_reset"
+PASSWORD_RESET_HOURS = 24
+
+
+def _password_fingerprint(hashed_password: str) -> str:
+    """Short fingerprint of the stored hash; changes whenever the password does."""
+    return hashlib.sha256(hashed_password.encode()).hexdigest()[:16]
+
+
+def create_password_reset_token(user: User, hours: int = PASSWORD_RESET_HOURS) -> tuple[str, datetime]:
+    """Create a signed one-time password reset token for ``user``.
+
+    The token is stateless: it is bound to the user's current password hash, so it
+    stops working as soon as the password is changed (by this token or otherwise),
+    and it expires after ``hours``. Returns the token and its expiry time (UTC).
+    """
+    expires_at = datetime.utcnow() + timedelta(hours=hours)
+    payload = {
+        "sub": str(user.id),
+        "purpose": PASSWORD_RESET_PURPOSE,
+        "pw": _password_fingerprint(user.hashed_password),
+        "exp": expires_at,
+    }
+    return jwt.encode(payload, settings.secret_key, algorithm=settings.algorithm), expires_at
+
+
+def verify_password_reset_token(db: Session, token: str) -> User | None:
+    """Return the user a reset token belongs to, or None if it is invalid, expired or used."""
+    try:
+        payload = jwt.decode(token, settings.secret_key, algorithms=[settings.algorithm])
+    except JWTError:
+        return None
+    if payload.get("purpose") != PASSWORD_RESET_PURPOSE:
+        return None
+    try:
+        user_id = int(payload.get("sub"))
+    except (TypeError, ValueError):
+        return None
+    user = db.query(User).filter(User.id == user_id).first()
+    if not user or not user.is_active or user.is_service_account:
+        return None
+    if payload.get("pw") != _password_fingerprint(user.hashed_password):
+        return None
+    return user
+
+
+def set_password(db: Session, user: User, new_password: str) -> None:
+    """Replace a user's password. Invalidates any outstanding reset tokens."""
+    user.hashed_password = get_password_hash(new_password)
+    db.commit()
+
+
+def generate_password(length: int = 16) -> str:
+    """Generate a random password that is easy to type (no ambiguous characters)."""
+    alphabet = "abcdefghjkmnpqrstuvwxyzABCDEFGHJKLMNPQRSTUVWXYZ23456789"
+    return "".join(secrets.choice(alphabet) for _ in range(length))
 
 
 # ==================== Service Account Functions ====================

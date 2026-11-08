@@ -1,5 +1,5 @@
 import api from './api';
-import { LoginResponse, User, UserCreate } from '../types/auth';
+import { AdminUserUpdate, LoginResponse, PasswordResetLink, PasswordResetValidation, ProfileUpdate, User, UserCreate } from '../types/auth';
 
 export const authService = {
   async login(email: string, password: string): Promise<LoginResponse> {
@@ -27,6 +27,31 @@ export const authService = {
 
   async register(userData: UserCreate): Promise<User> {
     const response = await api.post<User>('/auth/register', userData);
+    return response.data;
+  },
+
+  async updateProfile(data: ProfileUpdate): Promise<User> {
+    const response = await api.put<User>('/auth/me', data);
+    return response.data;
+  },
+
+  async validateResetToken(token: string): Promise<PasswordResetValidation> {
+    const response = await api.get<PasswordResetValidation>(`/auth/password-reset/${token}`);
+    return response.data;
+  },
+
+  async completePasswordReset(token: string, password: string): Promise<User> {
+    const response = await api.post<User>(`/auth/password-reset/${token}`, { password });
+    return response.data;
+  },
+
+  async createResetLink(userId: number): Promise<PasswordResetLink> {
+    const response = await api.post<PasswordResetLink>(`/auth/users/${userId}/reset-link`);
+    return response.data;
+  },
+
+  async adminUpdateUser(userId: number, data: AdminUserUpdate): Promise<User> {
+    const response = await api.patch<User>(`/auth/users/${userId}`, data);
     return response.data;
   },
 

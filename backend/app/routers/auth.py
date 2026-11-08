@@ -15,10 +15,14 @@ from app.models.company import Company
 from app.models.user import CompanyUser, User
 from app.schemas.company import CompanyResponse
 from app.schemas.user import (
+    AdminUserUpdate,
     ApiKeyExchangeRequest,
     ApiKeyRotateResponse,
     CompanyAccessRequest,
     CompanyUserResponse,
+    PasswordResetLink,
+    PasswordResetRequest,
+    PasswordResetValidation,
     ServiceAccountCreate,
     ServiceAccountCreated,
     ServiceAccountResponse,
@@ -31,10 +35,14 @@ from app.services.auth_service import (
     authenticate_by_api_key,
     authenticate_user,
     create_access_token,
+    create_password_reset_token,
     create_service_account,
     create_user,
     get_password_hash,
     rotate_api_key,
+    set_password,
+    verify_password,
+    verify_password_reset_token,
 )
 
 router = APIRouter(prefix="/api/auth", tags=["authentication"])
@@ -192,37 +200,75 @@ async def update_current_user(
     user_update: UserUpdate, current_user: User = Depends(get_current_active_user), db: Session = Depends(get_db)
 ):
     """
-    Update current user's information
+    Update the current user's own profile.
 
-    Users can update their own email, full_name, and password.
-    Cannot change is_admin or is_active status.
-
-    Args:
-        user_update: User update data
-        current_user: Current authenticated user
-        db: Database session
-
-    Returns:
-        Updated user information
+    Users can change their name freely. Changing the e-mail address or the password
+    requires the current password, so a stolen session token alone cannot take over
+    the account. Admin status and active status cannot be changed here.
     """
-    # Check if email is being changed and already exists
-    if user_update.email and user_update.email != current_user.email:
+    if current_user.is_service_account:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Service accounts have no profile")
+
+    wants_email = bool(user_update.email) and user_update.email != current_user.email
+    wants_password = bool(user_update.password)
+
+    if wants_email or wants_password:
+        if not user_update.current_password:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Current password is required to change e-mail or password",
+            )
+        if not verify_password(user_update.current_password, current_user.hashed_password):
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Current password is incorrect")
+
+    if wants_email:
         existing = db.query(User).filter(User.email == user_update.email).first()
         if existing:
             raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Email already in use")
         current_user.email = user_update.email
 
-    # Update other fields
     if user_update.full_name:
         current_user.full_name = user_update.full_name
 
-    if user_update.password:
+    if wants_password:
         current_user.hashed_password = get_password_hash(user_update.password)
 
     db.commit()
     db.refresh(current_user)
 
     return current_user
+
+
+# ==================== Password Reset (no e-mail needed) ====================
+
+
+@router.get("/password-reset/{token}", response_model=PasswordResetValidation)
+def validate_password_reset(token: str, db: Session = Depends(get_db)):
+    """
+    PUBLIC: Check a password reset token and tell the holder which account it is for.
+    """
+    user = verify_password_reset_token(db, token)
+    if not user:
+        return PasswordResetValidation(valid=False, message="Länken är ogiltig, förbrukad eller har gått ut")
+    return PasswordResetValidation(valid=True, email=user.email, full_name=user.full_name)
+
+
+@router.post("/password-reset/{token}", response_model=UserResponse)
+def complete_password_reset(token: str, body: PasswordResetRequest, db: Session = Depends(get_db)):
+    """
+    PUBLIC: Set a new password using a reset token.
+
+    The token is bound to the old password hash, so it is spent as soon as the
+    password changes.
+    """
+    user = verify_password_reset_token(db, token)
+    if not user:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST, detail="Länken är ogiltig, förbrukad eller har gått ut"
+        )
+    set_password(db, user, body.password)
+    db.refresh(user)
+    return user
 
 
 # ==================== Admin Endpoints ====================
@@ -270,6 +316,61 @@ async def create_new_user(user_data: UserCreate, admin: User = Depends(require_a
         db=db, email=user_data.email, password=user_data.password, full_name=user_data.full_name, is_admin=False
     )
 
+    return user
+
+
+@router.patch("/users/{user_id}", response_model=UserResponse)
+async def admin_update_user(
+    user_id: int, body: AdminUserUpdate, admin: User = Depends(require_admin), db: Session = Depends(get_db)
+):
+    """
+    Admin: Update another user's name, e-mail, active status or admin status.
+
+    An admin cannot deactivate themselves or remove their own admin role, so the
+    instance can never be left without a working administrator.
+    """
+    user = _get_person(db, user_id)
+
+    if body.email and body.email != user.email:
+        if db.query(User).filter(User.email == body.email).first():
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Email already in use")
+        user.email = body.email
+    if body.full_name:
+        user.full_name = body.full_name
+    if body.is_active is not None:
+        if user.id == admin.id and not body.is_active:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="You cannot deactivate yourself")
+        user.is_active = body.is_active
+    if body.is_admin is not None:
+        if user.id == admin.id and not body.is_admin:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="You cannot remove your own admin role")
+        user.is_admin = body.is_admin
+
+    db.commit()
+    db.refresh(user)
+    return user
+
+
+@router.post("/users/{user_id}/reset-link", response_model=PasswordResetLink)
+async def admin_create_reset_link(user_id: int, admin: User = Depends(require_admin), db: Session = Depends(get_db)):
+    """
+    Admin: Create a one-time password reset link for a user.
+
+    Reknir sends no e-mail. The admin hands the link to the user over any channel
+    they trust (chat, in person). It is valid for 24 hours and for one use.
+    """
+    user = _get_person(db, user_id)
+    if not user.is_active:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="User account is inactive")
+    token, expires_at = create_password_reset_token(user)
+    return PasswordResetLink(token=token, path=f"/reset-password/{token}", expires_at=expires_at)
+
+
+def _get_person(db: Session, user_id: int) -> User:
+    """Fetch a human user or raise 404 (service accounts are managed elsewhere)."""
+    user = db.query(User).filter(User.id == user_id, User.is_service_account.is_(False)).first()
+    if not user:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found")
     return user
 
 

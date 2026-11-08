@@ -19,12 +19,47 @@ class UserCreate(UserBase):
 
 
 class UserUpdate(BaseModel):
-    """Schema for updating a user"""
+    """Schema for a user updating their own profile.
+
+    Changing the e-mail address or the password requires ``current_password``.
+    """
 
     email: EmailStr | None = None
     full_name: str | None = Field(None, min_length=1, max_length=200)
     password: str | None = Field(None, min_length=8, max_length=100)
+    current_password: str | None = Field(None, max_length=100)
+
+
+class AdminUserUpdate(BaseModel):
+    """Schema for an admin updating another user's account."""
+
+    email: EmailStr | None = None
+    full_name: str | None = Field(None, min_length=1, max_length=200)
     is_active: bool | None = None
+    is_admin: bool | None = None
+
+
+class PasswordResetLink(BaseModel):
+    """A one-time password reset link created by an admin or the CLI."""
+
+    token: str
+    path: str = Field(..., description="Frontend path, e.g. /reset-password/<token>")
+    expires_at: datetime
+
+
+class PasswordResetValidation(BaseModel):
+    """Result of checking a password reset token."""
+
+    valid: bool
+    email: str | None = None
+    full_name: str | None = None
+    message: str | None = None
+
+
+class PasswordResetRequest(BaseModel):
+    """New password submitted together with a reset token."""
+
+    password: str = Field(..., min_length=8, max_length=100)
 
 
 class UserResponse(UserBase):

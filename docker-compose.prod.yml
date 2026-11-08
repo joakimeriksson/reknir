@@ -28,6 +28,7 @@ services:
     environment:
       DATABASE_URL: postgresql://${POSTGRES_USER:-reknir}:${POSTGRES_PASSWORD:-reknir}@postgres:5432/${POSTGRES_DB:-reknir}
       CORS_ORIGINS: ${CORS_ORIGINS:-${APP_URL:-*}}
+      APP_URL: ${APP_URL:-}
       DEBUG: "False"
       SECRET_KEY: ${SECRET_KEY:-change-this-in-production}
     # No port exposure - accessed via nginx only

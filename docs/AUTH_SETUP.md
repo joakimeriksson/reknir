@@ -258,6 +258,40 @@ CREATE TABLE company_users (
 
 ---
 
+## 🔁 Profile Changes and Password Recovery (no e-mail)
+
+Reknir does not send e-mail, so account recovery works through links and the CLI
+instead of "forgot password" mails.
+
+### Change your own name, e-mail or password
+
+**Inställningar → Mitt konto.** Changing the e-mail address or the password requires
+the current password (`PUT /api/auth/me` with `current_password`). Admin and active
+status cannot be changed there.
+
+### Reset a password for someone who is locked out
+
+1. **Admin in the UI:** *Användare → Återställningslänk* next to the user. Reknir shows a
+   one-time link (`/reset-password/<token>`); copy it and hand it to the user over a
+   channel you trust. The link is valid for 24 hours and stops working as soon as the
+   password is changed. The user opens it, sets a new password and signs in.
+2. **Nobody can sign in (e.g. the only admin forgot their password):** on the server,
+
+   ```bash
+   docker compose exec backend python -m app.cli list-users
+   docker compose exec backend python -m app.cli reset-link admin@example.com
+   # or, to get a random password printed once instead of a link:
+   docker compose exec backend python -m app.cli reset-password admin@example.com
+   ```
+
+   `reset-link` prints a full URL when `APP_URL` is set in `.env`, otherwise the path.
+
+Reset tokens are signed JWTs bound to the user's current password hash, so no table or
+migration is needed, they cannot be used as API access tokens, and they are spent on
+first use. Admins can also deactivate/reactivate users and grant or remove the admin
+role via `PATCH /api/auth/users/{id}`; an admin can never deactivate themselves or
+remove their own admin role.
+
 ## Implementation Summary
 
 ### Protected Endpoints
