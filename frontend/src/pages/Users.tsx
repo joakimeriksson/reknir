@@ -1,8 +1,11 @@
 import { useState, useEffect } from 'react'
-import { Users as UsersIcon, Plus, Building2, Trash2, Bot, RefreshCw, Copy, Eye, EyeOff } from 'lucide-react'
+import { Users as UsersIcon, Plus, Building2, Trash2, Bot, RefreshCw, Copy, Eye, EyeOff, KeyRound, UserX, UserCheck } from 'lucide-react'
 import api from '../services/api'
 import { getErrorMessage } from '../utils/errors'
 import { useToast } from '@/contexts/ToastContext'
+import { useAuth } from '@/contexts/AuthContext'
+import { authService } from '../services/authService'
+import type { PasswordResetLink } from '../types/auth'
 
 interface User {
   id: number
@@ -56,6 +59,9 @@ export default function Users() {
   const [createdApiKey, setCreatedApiKey] = useState<string | null>(null)
   const [showApiKey, setShowApiKey] = useState(false)
   const [rotatedApiKey, setRotatedApiKey] = useState<{ id: number; key: string } | null>(null)
+  const [resetLink, setResetLink] = useState<{ user: User; link: PasswordResetLink } | null>(null)
+  const [linkCopied, setLinkCopied] = useState(false)
+  const { user: currentUser } = useAuth()
 
   useEffect(() => {
     loadUsers()
@@ -149,6 +155,29 @@ export default function Users() {
       showToast(getErrorMessage(error, 'Failed to create user'), 'error')
     }
   }
+
+  const handleCreateResetLink = async (user: User) => {
+    try {
+      const link = await authService.createResetLink(user.id)
+      setLinkCopied(false)
+      setResetLink({ user, link })
+    } catch (error) {
+      showToast(getErrorMessage(error, 'Kunde inte skapa återställningslänk'), 'error')
+    }
+  }
+
+  const handleToggleActive = async (user: User) => {
+    const verb = user.is_active ? 'inaktivera' : 'aktivera'
+    if (!confirm(`Vill du ${verb} ${user.full_name}?`)) return
+    try {
+      await authService.adminUpdateUser(user.id, { is_active: !user.is_active })
+      loadUsers()
+    } catch (error) {
+      showToast(getErrorMessage(error, `Kunde inte ${verb} användaren`), 'error')
+    }
+  }
+
+  const resetUrl = resetLink ? `${window.location.origin}${resetLink.link.path}` : ''
 
   const handleGrantAccess = async () => {
     if (!selectedUser || !selectedCompanyId) return
@@ -269,19 +298,76 @@ export default function Users() {
                   </span>
                 </td>
                 <td className="px-6 py-4 whitespace-nowrap text-sm font-medium">
-                  <button
-                    onClick={() => openCompanyModal(user)}
-                    className="text-blue-600 hover:text-blue-900 flex items-center gap-1"
-                  >
-                    <Building2 className="w-4 h-4" />
-                    Hantera företag
-                  </button>
+                  <div className="flex items-center gap-4">
+                    <button
+                      onClick={() => openCompanyModal(user)}
+                      className="text-blue-600 hover:text-blue-900 flex items-center gap-1"
+                    >
+                      <Building2 className="w-4 h-4" />
+                      Hantera företag
+                    </button>
+                    <button
+                      onClick={() => handleCreateResetLink(user)}
+                      disabled={!user.is_active}
+                      title="Skapa en engångslänk för att sätta nytt lösenord"
+                      className="text-amber-700 hover:text-amber-900 flex items-center gap-1 disabled:opacity-40"
+                    >
+                      <KeyRound className="w-4 h-4" />
+                      Återställningslänk
+                    </button>
+                    {user.id !== currentUser?.id && (
+                      <button
+                        onClick={() => handleToggleActive(user)}
+                        className={`flex items-center gap-1 ${
+                          user.is_active ? 'text-red-600 hover:text-red-800' : 'text-green-700 hover:text-green-900'
+                        }`}
+                      >
+                        {user.is_active ? <UserX className="w-4 h-4" /> : <UserCheck className="w-4 h-4" />}
+                        {user.is_active ? 'Inaktivera' : 'Aktivera'}
+                      </button>
+                    )}
+                  </div>
                 </td>
               </tr>
             ))}
           </tbody>
         </table>
       </div>
+
+      {/* Reset link modal */}
+      {resetLink && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+          <div className="bg-white rounded-lg p-6 w-full max-w-lg">
+            <h2 className="text-xl font-bold mb-2 flex items-center gap-2">
+              <KeyRound className="w-5 h-5 text-amber-700" />
+              Återställningslänk för {resetLink.user.full_name}
+            </h2>
+            <p className="text-sm text-gray-600 mb-4">
+              Reknir skickar ingen e-post. Kopiera länken och ge den till användaren på ett sätt du litar på.
+              Den gäller till {new Date(resetLink.link.expires_at + 'Z').toLocaleString('sv-SE')} och kan bara användas en gång.
+            </p>
+            <div className="flex items-center gap-2 bg-gray-50 border rounded p-3">
+              <code className="text-xs break-all flex-1">{resetUrl}</code>
+              <button
+                onClick={() => {
+                  copyToClipboard(resetUrl)
+                  setLinkCopied(true)
+                }}
+                className="p-2 text-gray-600 hover:text-gray-900"
+                title="Kopiera"
+              >
+                <Copy className="w-4 h-4" />
+              </button>
+            </div>
+            {linkCopied && <p className="text-xs text-green-700 mt-2">Kopierad till urklipp</p>}
+            <div className="flex justify-end mt-6">
+              <button onClick={() => setResetLink(null)} className="px-4 py-2 bg-gray-100 rounded-lg hover:bg-gray-200">
+                Stäng
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Service Accounts Section */}
       <div className="flex items-center justify-between mt-10">

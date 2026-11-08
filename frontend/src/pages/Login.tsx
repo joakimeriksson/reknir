@@ -129,6 +129,13 @@ const Login: React.FC = () => {
               </button>
             </div>
           </form>
+
+          <p className="mt-6 text-xs text-gray-500 text-center">
+            Glömt lösenordet? Reknir skickar ingen e-post. Be en administratör skapa en
+            återställningslänk under Användare, eller kör{' '}
+            <code className="bg-gray-100 px-1 rounded">python -m app.cli reset-link din@epost.se</code>{' '}
+            på servern.
+          </p>
         </div>
       </div>
     </div>

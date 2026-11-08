@@ -19,6 +19,7 @@ import InvitationsPage from './pages/Invitations'
 import InviteAccept from './pages/InviteAccept'
 import Setup from './pages/Setup'
 import Login from './pages/Login'
+import ResetPassword from './pages/ResetPassword'
 import { FiscalYearProvider } from './contexts/FiscalYearContext'
 import { LayoutSettingsProvider } from './contexts/LayoutSettingsContext'
 import CompanySelector from './components/CompanySelector'
@@ -43,6 +44,7 @@ function App() {
               <Routes>
                 <Route path="/login" element={<Login />} />
                 <Route path="/invite/:token" element={<InviteAccept />} />
+                <Route path="/reset-password/:token" element={<ResetPassword />} />
                 <Route path="/setup" element={<Setup />} />
                 <Route path="/*" element={<ProtectedRoute><AppContent /></ProtectedRoute>} />
               </Routes>

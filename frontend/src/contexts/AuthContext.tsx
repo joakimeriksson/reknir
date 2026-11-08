@@ -52,6 +52,13 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
     setUser(currentUser);
   };
 
+  const refreshUser = async () => {
+    const savedToken = authService.getToken();
+    if (!savedToken) return;
+    const currentUser = await authService.getCurrentUser(savedToken);
+    setUser(currentUser);
+  };
+
   const logout = () => {
     authService.removeToken();
     setToken(null);
@@ -63,6 +70,7 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
     token,
     login,
     logout,
+    refreshUser,
     isAuthenticated: !!token && !!user,
     isLoading
   };

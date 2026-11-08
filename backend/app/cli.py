@@ -287,6 +287,10 @@ def main():
         print("  import-company <path>       - Import a company archive as a new company")
         print("  bokio-import <dir> [out.zip] [--close-through YEAR] [--user EMAIL]")
         print("                              - Turn a Bokio 'Exportera data' folder into a company archive")
+        print("  reset-link <email> [--hours N]")
+        print("                              - Print a one-time password reset link for a user (default 24 h)")
+        print("  reset-password <email>      - Set a new random password for a user and print it once")
+        print("  list-users                  - List user accounts")
         print("\nExamples:")
         print("  python -m app.cli seed-bas")
         print("  python -m app.cli seed-templates")
@@ -524,6 +528,47 @@ def main():
         except restore_service.RestoreError as e:
             print(f"Restore failed at stage '{e.stage}': {e}")
             sys.exit(1)
+
+    elif command in ("reset-link", "reset-password", "list-users"):
+        import os
+
+        from app.models.user import User
+        from app.services import auth_service
+
+        db = SessionLocal()
+        try:
+            if command == "list-users":
+                users = db.query(User).filter(User.is_service_account.is_(False)).order_by(User.id).all()
+                for u in users:
+                    flags = ("admin " if u.is_admin else "") + ("" if u.is_active else "inactive")
+                    print(f"{u.id:>3}  {u.email:<40} {u.full_name:<25} {flags}")
+                sys.exit(0)
+
+            if len(sys.argv) < 3:
+                print(f"Usage: python -m app.cli {command} <email>")
+                sys.exit(1)
+            email = sys.argv[2]
+            user = db.query(User).filter(User.email == email, User.is_service_account.is_(False)).first()
+            if not user:
+                print(f"No user with email {email}")
+                sys.exit(1)
+
+            if command == "reset-link":
+                hours = auth_service.PASSWORD_RESET_HOURS
+                if "--hours" in sys.argv:
+                    hours = int(sys.argv[sys.argv.index("--hours") + 1])
+                token, expires_at = auth_service.create_password_reset_token(user, hours=hours)
+                path = f"/reset-password/{token}"
+                base = os.environ.get("APP_URL", "").rstrip("/")
+                print(f"Password reset link for {user.email} (valid until {expires_at:%Y-%m-%d %H:%M} UTC, one use):")
+                print(f"  {base}{path}" if base else f"  <your Reknir URL>{path}")
+            else:
+                new_password = auth_service.generate_password()
+                auth_service.set_password(db, user, new_password)
+                print(f"New password for {user.email} (shown once, change it after logging in):")
+                print(f"  {new_password}")
+        finally:
+            db.close()
 
     else:
         print(f"Unknown command: {command}")

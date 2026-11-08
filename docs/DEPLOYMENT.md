@@ -308,6 +308,18 @@ docker compose restart cloudflared
 # status in the Cloudflare Zero Trust dashboard
 ```
 
+### Forgot the Admin Password
+
+Reknir sends no e-mail. Print a one-time reset link (or a new random password) from the server:
+
+```bash
+cd /path/to/reknir
+docker compose exec backend python -m app.cli list-users
+docker compose exec backend python -m app.cli reset-link you@example.com
+```
+
+Open the link in the browser and set a new password. See `docs/AUTH_SETUP.md`.
+
 ### 502 Bad Gateway
 
 ```bash
