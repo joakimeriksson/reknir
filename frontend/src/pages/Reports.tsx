@@ -23,6 +23,7 @@ export default function Reports() {
   const [selectedPeriod, setSelectedPeriod] = useState<VATPeriod | null>(null)
   const [vatYear, setVatYear] = useState(new Date().getFullYear())
   const [excludeVatSettlements, setExcludeVatSettlements] = useState(true)
+  const [vatXmlError, setVatXmlError] = useState<string | null>(null)
   const [showVerificationsModal, setShowVerificationsModal] = useState(false)
   const { selectedFiscalYear, loadFiscalYears } = useFiscalYear()
 
@@ -199,6 +200,31 @@ export default function Reports() {
       window.URL.revokeObjectURL(url)
     } catch (error) {
       console.error('Failed to download balance sheet PDF:', error)
+    }
+  }
+
+  const handleDownloadVatXml = async () => {
+    if (!selectedCompany || !selectedPeriod) return
+    setVatXmlError(null)
+    try {
+      const response = await reportApi.vatReportXml(
+        selectedCompany.id,
+        selectedPeriod.start_date,
+        selectedPeriod.end_date,
+        excludeVatSettlements
+      )
+      const blob = new Blob([response.data], { type: 'application/xml' })
+      const url = window.URL.createObjectURL(blob)
+      const link = document.createElement('a')
+      link.href = url
+      link.download = `moms_${selectedCompany.org_number.replace('-', '')}_${selectedPeriod.start_date}_-_${selectedPeriod.end_date}.xml`
+      document.body.appendChild(link)
+      link.click()
+      document.body.removeChild(link)
+      window.URL.revokeObjectURL(url)
+    } catch (error) {
+      console.error('Failed to download VAT XML:', error)
+      setVatXmlError('Kunde inte skapa momsfilen. Försök igen eller kontrollera momsrapporten.')
     }
   }
 
@@ -916,16 +942,7 @@ export default function Reports() {
               {/* Download XML button */}
               <div className="mt-4">
                 <button
-                  onClick={() => {
-                    if (!selectedCompany || !selectedFiscalYear || !selectedPeriod) return
-                    const url = new URL('/reports/vat-report-xml', import.meta.env.VITE_API_URL || 'http://localhost:8000/api')
-                    url.searchParams.append('company_id', selectedCompany.id.toString())
-                    url.searchParams.append('fiscal_year_id', selectedFiscalYear.id.toString())
-                    url.searchParams.append('start_date', selectedPeriod.start_date)
-                    url.searchParams.append('end_date', selectedPeriod.end_date)
-                    url.searchParams.append('exclude_vat_settlements', excludeVatSettlements.toString())
-                    window.open(url.toString(), '_blank')
-                  }}
+                  onClick={handleDownloadVatXml}
                   className="w-full px-6 py-3 bg-green-600 text-white font-semibold rounded-lg hover:bg-green-700 transition-colors flex items-center justify-center gap-2"
                 >
                   <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -936,6 +953,7 @@ export default function Reports() {
                 <p className="mt-2 text-xs text-center text-gray-600">
                   Filen är klar att laddas upp under "Lämna momsdeklaration" på Skatteverket.se
                 </p>
+                {vatXmlError && <p className="mt-2 text-sm text-center text-red-600">{vatXmlError}</p>}
               </div>
             </div>
           )}
