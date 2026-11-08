@@ -246,6 +246,16 @@ export const reportApi = {
         exclude_vat_settlements: excludeVatSettlements,
       },
     }),
+  vatReportXml: (companyId: number, startDate: string, endDate: string, excludeVatSettlements: boolean) =>
+    api.get('/reports/vat-report-xml', {
+      params: {
+        company_id: companyId,
+        start_date: startDate,
+        end_date: endDate,
+        exclude_vat_settlements: excludeVatSettlements,
+      },
+      responseType: 'blob',
+    }),
   vatPeriods: (companyId: number, year: number) =>
     api.get<VATPeriodsResponse>('/reports/vat-periods', {
       params: { company_id: companyId, year },

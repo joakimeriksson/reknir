@@ -1083,12 +1083,15 @@ async def export_vat_report_xml(
         raise HTTPException(status_code=404, detail="Company not found")
 
     # Get the VAT report data (reuse existing logic)
-    vat_report_response = get_vat_report(
+    # get_vat_report is an async endpoint function: await it and pass the
+    # dependencies explicitly, since FastAPI does not inject them on a direct call.
+    vat_report_response = await get_vat_report(
         company_id=company_id,
         start_date=start_date,
         end_date=end_date,
         exclude_vat_settlements=exclude_vat_settlements,
         db=db,
+        current_user=current_user,
     )
 
     skv = vat_report_response["skv_3800"]
@@ -1173,19 +1176,12 @@ async def export_vat_report_xml(
 
     indent(root)
 
-    # Convert to XML string with utf-8 encoding
-    xml_bytes = ET.tostring(root, encoding="utf-8", method="xml")
-    xml_string = xml_bytes.decode("utf-8")
-
-    # Add DOCTYPE declaration after XML declaration
+    # Build the document explicitly: XML declaration, then DOCTYPE, then the root
+    # element. (ET.tostring with encoding="utf-8" emits no declaration, so the old
+    # "insert DOCTYPE after the first line" logic put it inside <eSKDUpload>.)
+    xml_declaration = '<?xml version="1.0" encoding="utf-8"?>\n'
     doctype = '<!DOCTYPE eSKDUpload PUBLIC "-//Skatteverket, Sweden//DTD Skatteverket eSKDUpload-DTD Version 6.0//SV" "https://www.skatteverket.se/download/18.3f4496fd14864cc5ac99cb1/1415022101213/eSKDUpload_6p0.dtd">\n'
-
-    # Split to insert DOCTYPE after XML declaration
-    xml_lines = xml_string.split("\n", 1)
-    if len(xml_lines) == 2:
-        full_xml = xml_lines[0] + "\n" + doctype + xml_lines[1]
-    else:
-        full_xml = xml_string
+    full_xml = xml_declaration + doctype + ET.tostring(root, encoding="unicode", method="xml").rstrip() + "\n"
 
     # Return as downloadable file
     filename = f"momsdeklaration_{company.org_number}_{period}.xml"
