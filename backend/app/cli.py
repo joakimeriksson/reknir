@@ -278,8 +278,9 @@ def main():
         print("  seed-templates [company_id] - Import Swedish posting templates for a company")
         print("  seed-all [company_id]       - Import both BAS and templates (complete setup)")
         print("                                Default company_id: 1")
-        print("  backup [--sql] [--no-ai]    - Create a full system backup (JSON + files archive)")
-        print("                                --sql: legacy pg_dump archive instead")
+        print("  backup [--json] [--no-ai]   - Create a full system backup (pg_dump + all uploaded files)")
+        print("                                --json: portable JSON + files archive instead")
+        print("                                --no-ai: leave AI chats and uploads out of a --json archive")
         print("  list-backups                - List available backups")
         print("  verify-backup <path>        - Check a backup archive without restoring it")
         print("  restore <path>              - Restore the whole system from a backup archive")
@@ -299,8 +300,8 @@ def main():
         print("  python -m app.cli seed-templates 2")
         print("  python -m app.cli backup")
         print("  python -m app.cli list-backups")
-        print("  python -m app.cli verify-backup /backups/reknir_backup_xxx.zip")
-        print("  python -m app.cli restore /backups/reknir_backup_xxx.zip")
+        print("  python -m app.cli verify-backup /backups/reknir_backup_xxx.tar.gz")
+        print("  python -m app.cli restore /backups/reknir_backup_xxx.tar.gz")
         print("  python -m app.cli export-company 1 /backups/exempel-ab.zip")
         print("  python -m app.cli import-company /backups/exempel-ab.zip")
         sys.exit(1)
@@ -340,10 +341,10 @@ def main():
         flags = set(sys.argv[2:])
         print("Creating backup...")
         try:
-            if "--sql" in flags:
-                archive_path = backup_service.create_sql_backup()
+            if "--json" in flags:
+                archive_path = backup_service.create_json_backup(include_ai="--no-ai" not in flags)
             else:
-                archive_path = backup_service.create_backup(include_ai="--no-ai" not in flags)
+                archive_path = backup_service.create_backup()
             info = backup_service.describe_backup(archive_path)
             print(f"Backup created: {archive_path}")
             if info.get("counts"):
@@ -356,11 +357,25 @@ def main():
 
     elif command == "verify-backup":
         if len(sys.argv) < 3:
-            print("Usage: python -m app.cli verify-backup <path-to-backup.zip>")
+            print("Usage: python -m app.cli verify-backup <path-to-backup.tar.gz|.zip>")
             sys.exit(1)
-        from app.services import archive_import_service
+        from app.services import archive_import_service, backup_service
 
         archive_path = Path(sys.argv[2])
+        if archive_path.name.endswith(".tar.gz"):
+            try:
+                manifest = backup_service.verify_sql_backup(archive_path)
+            except Exception as e:
+                print(f"INVALID: {e}")
+                sys.exit(1)
+            print(f"OK: {archive_path.name}")
+            print(f"  pg_dump backup, layout {manifest.get('layout', 1)}, created {manifest['created_at']}")
+            print(f"  app {manifest['app_version']}, schema {manifest['schema_version']}")
+            if "files" in manifest:
+                print(f"  {len(manifest['files'])} files verified against their checksums")
+            else:
+                print("  no checksums in this backup (made before they were added)")
+            sys.exit(0)
         try:
             archive = archive_import_service.verify_archive(archive_path)
         except archive_import_service.ArchiveError as e:

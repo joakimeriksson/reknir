@@ -14,7 +14,7 @@ Modern, self-hosted bookkeeping system for Swedish businesses with full BAS kont
 - SIE4 import/export for integration with other accounting software
 - AI bookkeeping assistant powered by Ollama (local LLM)
 - Multi-user authentication with role-based access
-- Backup and restore as a portable JSON + files archive (all data, all documents, SIE4 per year), with GUI, scheduler and CLI
+- Backup and restore of the whole system (database dump + all documents, migrated on restore), with GUI, scheduler and CLI
 - Per-company export/import archives for moving a company between installations
 - Bokio migration: `bokio-import` turns a Bokio data export into a company archive (see docs/BOKIO_IMPORT.md)
 - PostgreSQL with automatic backups
@@ -189,24 +189,29 @@ The system includes a complete backup and restore solution with both GUI and CLI
 - Create backups with one click
 - Calendar-based backup selector for restore
 - Restore from server backups or upload a backup file
-- Each backup includes: database, attachments, receipts, and metadata
+- Each backup includes: the database, all uploaded files (attachments, receipts, logos, AI uploads), and metadata
 
 ### CLI
 ```bash
 # Create a backup
-docker compose exec backend python -m app.cli backup create
+docker compose exec backend python -m app.cli backup
 
 # List available backups
-docker compose exec backend python -m app.cli backup list
+docker compose exec backend python -m app.cli list-backups
+
+# Check a backup against its checksums
+docker compose exec backend python -m app.cli verify-backup /backups/<filename>
 
 # Restore from a backup
-docker compose exec backend python -m app.cli backup restore <filename>
+docker compose exec -it backend python -m app.cli restore /backups/<filename>
 ```
 
 ### Automatic Backups
 - Configurable scheduled backups via Settings GUI (interval and retention)
 - Backups stored in `backups/` directory as `.tar.gz` archives
-- Each archive contains SQL dump, uploaded files, and version metadata
+- Each archive contains a pg_dump of the database, all uploaded files, and a manifest with the schema version and SHA-256 checksums
+- A restore runs the database migrations, so a backup from an older version restores into a newer one
+- `backup --json` creates the portable JSON + files archive instead (see [docs/PORTABLE_ARCHIVE.md](docs/PORTABLE_ARCHIVE.md))
 
 ## Support
 

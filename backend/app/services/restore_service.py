@@ -2,10 +2,12 @@
 
 Two archive kinds are supported:
 
-- ``reknir_backup_*.zip``: the portable JSON + files archive (current format).
-  Rows are loaded through the ORM into a fresh, fully migrated temporary
-  database; files are unpacked into a temporary uploads tree.
-- ``reknir_backup_*.tar.gz``: legacy pg_dump + attachments.
+- ``reknir_backup_*.tar.gz``: pg_dump + uploaded files (the system backup).
+  The dump is restored as it was and the migrations then bring it up to the
+  current schema.
+- ``reknir_backup_*.zip``: the portable JSON + files archive. Rows are loaded
+  through the ORM into a fresh, fully migrated temporary database; files are
+  unpacked into a temporary uploads tree.
 
 Both follow the same all-or-nothing flow:
 
@@ -34,7 +36,7 @@ from sqlalchemy.orm import sessionmaker
 
 from app.config import settings
 from app.schema_version import CURRENT_SCHEMA_VERSION
-from app.services import archive_import_service
+from app.services import archive_import_service, backup_service
 from app.services.storage import ATTACHMENTS_DIR, STORAGE_SUBDIRS, UPLOADS_DIR
 
 logger = logging.getLogger(__name__)
@@ -287,12 +289,13 @@ def _restore_json_archive(archive_path: Path, performed_by: str) -> RestoreResul
 
 
 # ---------------------------------------------------------------------------
-# legacy pg_dump archive
+# pg_dump archive
 # ---------------------------------------------------------------------------
 
 
 def _restore_sql_archive(archive_path: Path, performed_by: str) -> RestoreResult:
     result = RestoreResult()
+    result.backup_filename = archive_path.name
     names = _Names()
     db_info = names.db_info
     temp_files_dir: Path | None = None
@@ -300,34 +303,29 @@ def _restore_sql_archive(archive_path: Path, performed_by: str) -> RestoreResult
     swapped = False
 
     try:
-        # ---- Stage 1: Extract archive ----
-        temp_extract_dir = tempfile.mkdtemp(prefix="reknir_restore_")
-
-        with tarfile.open(archive_path, "r:gz") as tar:
-            # Security: validate member paths to prevent path traversal
-            for member in tar.getmembers():
-                if member.name.startswith("/") or ".." in member.name:
-                    raise RestoreError("Archive contains unsafe paths", "extract")
-            tar.extractall(temp_extract_dir)
-
-        result.stages_completed.append("extract")
-        backup_dir = Path(temp_extract_dir) / "backup"
-
-        # ---- Stage 2: Read and validate manifest ----
-        manifest_path = backup_dir / "manifest.json"
-        if not manifest_path.exists():
-            raise RestoreError("No manifest.json found in backup", "read_manifest")
-
-        with open(manifest_path) as f:
-            manifest = json.load(f)
-
-        result.backup_filename = archive_path.name
+        # ---- Stage 1: Read the manifest and verify every member's checksum ----
+        try:
+            manifest = backup_service.verify_sql_backup(archive_path)
+        except (RuntimeError, KeyError, ValueError, OSError, EOFError, tarfile.TarError) as e:
+            raise RestoreError(str(e), "verify") from e
 
         for field in ["created_at", "app_version", "schema_version"]:
             if field not in manifest:
-                raise RestoreError(f"Missing required field: {field}", "read_manifest")
+                raise RestoreError(f"Missing required field: {field}", "verify")
 
-        result.stages_completed.append("read_manifest")
+        result.stages_completed.append("verify")
+
+        # ---- Stage 2: Extract archive ----
+        temp_extract_dir = tempfile.mkdtemp(prefix="reknir_restore_")
+        try:
+            with tarfile.open(archive_path, "r:gz") as tar:
+                # The "data" filter refuses absolute paths, "..", links out of the tree and devices
+                tar.extractall(temp_extract_dir, filter="data")
+        except tarfile.TarError as e:
+            raise RestoreError(str(e), "extract") from e
+
+        result.stages_completed.append("extract")
+        backup_dir = Path(temp_extract_dir) / "backup"
 
         # ---- Stage 3: Version compatibility check ----
         backup_schema = manifest["schema_version"]
@@ -370,32 +368,42 @@ def _restore_sql_archive(archive_path: Path, performed_by: str) -> RestoreResult
             timeout=600,
         )
 
-        # pg_restore returns non-zero for both fatal errors and non-fatal warnings
-        # (e.g. SET transaction_timeout from newer pg_dump versions).
-        # If it reports "errors ignored on restore" it means it continued past them.
-        # Only fail on truly fatal issues where pg_restore couldn't proceed at all.
+        # pg_restore carries on past errors and then exits non-zero. The one error
+        # tolerated is SET transaction_timeout: pg_restore 17 sends it and a
+        # PostgreSQL 16 server rejects the setting, which does not affect the data.
         if pg_result.returncode != 0:
             stderr = pg_result.stderr
-            has_ignored_errors = "errors ignored on restore" in stderr
-            if not has_ignored_errors:
-                # Fatal error - pg_restore couldn't even partially complete
+            unexpected = [
+                line
+                for line in stderr.splitlines()
+                if line.startswith("pg_restore: error:") and "transaction_timeout" not in line
+            ]
+            if unexpected or "errors ignored on restore" not in stderr:
                 raise RestoreError(f"pg_restore failed: {stderr}", "restore_db")
-            else:
-                logger.warning(f"pg_restore completed with non-fatal warnings: {stderr}")
+            logger.warning(f"pg_restore skipped SET transaction_timeout: {stderr}")
 
         result.stages_completed.append("restore_db")
 
-        # ---- Stage 6: Restore files to temp directory (legacy archives only hold attachments) ----
-        files_source = backup_dir / "files"
+        # ---- Stage 6: Restore files to temp directory ----
         temp_files_dir = _new_uploads_tree()
-
-        if files_source.exists():
-            for item in files_source.iterdir():
-                dest = temp_files_dir / "attachments" / item.name
-                if item.is_file():
-                    shutil.copy2(item, dest)
-                elif item.is_dir():
-                    shutil.copytree(item, dest)
+        if manifest.get("layout", 1) >= 2:
+            for sub in STORAGE_SUBDIRS:
+                source = backup_dir / "uploads" / sub
+                if source.is_dir():
+                    (temp_files_dir / sub).rmdir()
+                    shutil.move(str(source), str(temp_files_dir / sub))
+            restored_subdirs = STORAGE_SUBDIRS
+        else:
+            # Layout 1 holds the attachments only, directly under backup/files
+            files_source = backup_dir / "files"
+            if files_source.exists():
+                for item in files_source.iterdir():
+                    dest = temp_files_dir / "attachments" / item.name
+                    if item.is_file():
+                        shutil.copy2(item, dest)
+                    elif item.is_dir():
+                        shutil.copytree(item, dest)
+            restored_subdirs = ("attachments",)
 
         result.stages_completed.append("restore_files")
 
@@ -418,8 +426,8 @@ def _restore_sql_archive(archive_path: Path, performed_by: str) -> RestoreResult
 
         result.stages_completed.append("validation")
 
-        # ---- Stage 9: Atomic swap (attachments only: legacy archives carry nothing else) ----
-        _swap(names, temp_files_dir, ("attachments",))
+        # ---- Stage 9: Atomic swap (layout 1 replaces the attachments only) ----
+        _swap(names, temp_files_dir, restored_subdirs)
         swapped = True
         result.stages_completed.append("swap")
 

@@ -178,7 +178,7 @@ export default function RestoreModal({ isOpen, onClose, backups }: RestoreModalP
           success: true,
           backup_filename: selectedBackup || uploadedFile?.name || 'unknown',
           message: 'Återställningen verkar ha slutförts. Anslutningen bröts under databasbytet.',
-          stages_completed: ['extract', 'read_manifest', 'version_check', 'create_temp_db', 'restore_db', 'restore_files', 'migrations', 'validation', 'swap'],
+          stages_completed: ['verify', 'extract', 'version_check', 'create_temp_db', 'restore_db', 'restore_files', 'migrations', 'validation', 'swap'],
         })
         setStep('result')
 
@@ -258,7 +258,7 @@ export default function RestoreModal({ isOpen, onClose, backups }: RestoreModalP
                   <Upload className="w-8 h-8 text-blue-600 mb-3" />
                   <h4 className="font-medium text-gray-900 mb-1">Ladda upp fil</h4>
                   <p className="text-sm text-gray-600">
-                    Ladda upp en backup-fil (.zip eller äldre .tar.gz)
+                    Ladda upp en backup-fil (.tar.gz eller .zip)
                   </p>
                 </button>
               </div>
@@ -484,7 +484,7 @@ export default function RestoreModal({ isOpen, onClose, backups }: RestoreModalP
                   <div>
                     <Upload className="w-12 h-12 text-gray-400 mx-auto mb-3" />
                     <p className="text-gray-600">Klicka för att välja en fil</p>
-                    <p className="text-sm text-gray-500 mt-1">.zip (JSON + filer) eller äldre .tar.gz</p>
+                    <p className="text-sm text-gray-500 mt-1">.tar.gz (databas + filer) eller .zip (JSON-arkiv)</p>
                   </div>
                 )}
               </div>

@@ -45,7 +45,7 @@ reknir/
 ├── invoices/                 # Fakturabilagor
 ├── uploads/                  # Uppladdade filer (logotyper)
 │   └── logos/                # Företagslogotyper
-├── backups/                  # Backup-arkiv (.zip = JSON + filer; äldre .tar.gz)
+├── backups/                  # Backup-arkiv (.tar.gz = pg_dump + filer; .zip = JSON-arkiv)
 └── docker-compose.dev.yml    # Container orchestration (dev)
 ```
 
@@ -342,18 +342,24 @@ Detta innebär att en mall skapad år 2024 automatiskt fungerar år 2025, förut
 - Rapporter: `GET /api/reports/aging`, `GET /api/reports/cash-flow`
 
 ### 11. Backup & Restore
-- Backup = portabelt arkiv (`reknir_backup_*.zip`): alla tabeller som JSON/JSONL, alla filer
-  (bilagor, arkiverade faktura-PDF:er, kvitton, logotyper, AI-uppladdningar), SIE4 per räkenskapsår,
-  JSON Schema för formatet och manifest med SHA-256 per fil. Se `docs/PORTABLE_ARCHIVE.md`.
-- Format: `app/schemas/archive.py` (Pydantic-modellerna ÄR formatet, `format_version`).
+- Systembackup (`reknir_backup_*.tar.gz`, `backup_service.create_backup`): pg_dump av hela databasen,
+  alla filer under uploads (bilagor, arkiverade faktura-PDF:er, kvitton, logotyper, AI-uppladdningar)
+  och manifest med alembic-revision samt storlek och SHA-256 per fil (`layout: 2`).
+  Återställning: `restore_service.py` (checksummor → extract → temp-DB + pg_restore → filer →
+  `alembic upgrade head` → validering → swap). Migreringarna lyfter en äldre backup till aktuellt
+  schema, och nya tabeller kommer med utan ändringar i backupkoden.
+- Portabelt arkiv (`reknir_backup_*.zip`, `backup --json`): alla tabeller som JSON/JSONL, alla filer,
+  SIE4 per räkenskapsår, JSON Schema och manifest med SHA-256. Till för att flytta och arkivera.
+  Format: `app/schemas/archive.py` (Pydantic-modellerna ÄR formatet, `format_version`).
   Export: `app/services/archive_export_service.py`. Verifiering + import: `archive_import_service.py`.
-  Fullständig återställning: `restore_service.py` (verify → temp-DB + alembic → load → validering → swap).
+  Se `docs/PORTABLE_ARCHIVE.md`.
 - Manuell och schemalagd backup (konfigurerbart intervall och retention)
 - Kalenderbaserad backup-väljare med snabbåtkomst till senaste backuper
-- Restore från server eller uppladdad fil (.zip, eller äldre .tar.gz med pg_dump)
+- Restore från server eller uppladdad fil (.tar.gz eller .zip)
 - Radering av backuper
 - Företagsarkiv: export/import av ett enskilt företag (utan användare/lösenord) som nytt företag
-- CLI: `backup [--sql] [--no-ai]`, `list-backups`, `verify-backup`, `restore`, `export-company`, `import-company`, `bokio-import` (`docs/BOKIO_IMPORT.md`, `app/services/bokio_import_service.py`)
+- CLI: `backup [--json] [--no-ai]`, `list-backups`, `verify-backup`, `restore`, `export-company`, `import-company`, `bokio-import` (`docs/BOKIO_IMPORT.md`, `app/services/bokio_import_service.py`)
+- `pg_dump`/`pg_restore` i backend-imagen måste vara minst samma huvudversion som PostgreSQL-servern
 - Metadata per backup: appversion, schemaversion, format, företag, antal poster, storlek, tidpunkt
 - Filer lagras under `settings.uploads_dir` (`/app/uploads`): `attachments/`, `logos/`, `ai_uploads/` (`app/services/storage.py`)
 
@@ -529,7 +535,9 @@ Systemet använder default accounts för automatisk bokföring:
 - `get_vat_outgoing_account_for_rate()` - Hämta utgående momskonto
 
 ### `/backend/app/services/backup_service.py`
-- `create_backup()` - Skapar komplett backup-arkiv (.tar.gz) med databas, bilagor och metadata
+- `create_backup()` - Skapar systembackup (.tar.gz): pg_dump, alla uppladdade filer och manifest med checksummor
+- `verify_sql_backup()` - Kontrollerar en .tar.gz-backup mot manifestets checksummor
+- `create_json_backup()` - Skapar det portabla JSON-arkivet (.zip)
 - `list_backups()` - Listar alla tillgängliga backuper med metadata
 - `enforce_retention(max_backups)` - Raderar äldsta backuper om antal överstiger max
 - `BACKUP_DIR` - Sökväg till backup-katalogen
