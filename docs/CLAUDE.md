@@ -734,10 +734,28 @@ BSD 3-Clause License - Se LICENSE-filen i projektets rot.
 
 ---
 
-**Version:** 1.3.4
-**Senast uppdaterad:** 2026-04-14
+**Version:** 1.3.5
+**Senast uppdaterad:** 2026-11-14
 
 ## Ändringslogg
+
+### v1.3.5 (2026-11-14)
+- ✅ Inställningarna uppdelade i tre
+  - Företagsinställningar: företag, räkenskapsår med periodlåsning, konteringsmallar, import/export, bilagor, historik
+  - Systeminställningar (admin): alla företag, nytt företag, import av företagsarkiv, backup, AI-assistent
+  - Mitt konto: profil, lösenord och delad vy, via namnet längst ned i sidomenyn
+  - Endast administratörer kan skapa företag (`POST /api/companies/`)
+- ✅ Enhetlig knappstil på alla sidor
+- Ändringar sedan v1.3.4:
+  - ✅ Portabelt arkiv (JSON + filer) för backup och för export/import av enskilda företag
+  - ✅ Bokio-import till företagsarkiv
+  - ✅ Tjänstekonton för API-åtkomst
+  - ✅ Bokföringsregler: rättelseverifikationer, numrering per räkenskapsår, periodlåsning, luckor och behandlingshistorik, även i arkivet
+  - ✅ Deadlinekalender på översikten: moms, INK2, årsredovisning och årsstämma
+  - ✅ Självbetjäning för konto och lösenordsåterställning utan e-post
+  - ✅ Konfigurerbara portar och compose-inställningar via `.env`, fixar för produktionsdrift
+  - ✅ AI-assistenten: PDF-till-bild för visionsmodeller
+  - ✅ Fix: momsredovisningsverifikationer i momsrapporten, XML-export av momsdeklarationen, radering av företag, Alembic med tom databas-URL
 
 ### v1.3.4 (2026-04-14)
 - ✅ AI-assistent med Ollama-integration
