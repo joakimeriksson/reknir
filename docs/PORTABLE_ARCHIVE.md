@@ -1,9 +1,9 @@
 # Portable Archive — design
 
-Status: implemented (2026-09-23). The archive is the backup format used by
-Settings → Systembackup, the scheduler and `python -m app.cli backup`. The legacy
-pg_dump backup remains available as `backup --sql` and old `.tar.gz` backups can
-still be restored.
+Status: implemented (2026-09-23). Since November 2026 the system backup
+(Settings → Systembackup, the scheduler and `python -m app.cli backup`) is the
+pg_dump backup again, as the table under "Why" recommends. The archive is written
+by `backup --json` and by the per-company export; both kinds can be restored.
 
 Code: `backend/app/schemas/archive.py` (format), `archive_export_service.py`,
 `archive_import_service.py`, `restore_service.py`, tests in
@@ -35,7 +35,8 @@ recovery of one installation, but it is not a migration format:
   `pg_dump` that wrote it;
 - it is instance-wide (all companies, all users, AI settings) — no per-company
   export;
-- it skips `uploads/logos/` and `uploads/ai_uploads/`;
+- it skips `uploads/logos/` and `uploads/ai_uploads/` (fixed: since layout 2
+  the backup holds every uploads sub-directory, with SHA-256 per member);
 - its contents are only meaningful to this exact schema version; a rewrite of
   Reknir on another stack (or another product) cannot consume it.
 
@@ -267,10 +268,15 @@ Files, in build order:
 
 Two fixes to the existing backup that are independent of this work:
 
-- archive `uploads/` (logos, ai_uploads) instead of only `uploads/attachments/`;
+- archive `uploads/` (logos, ai_uploads) instead of only `uploads/attachments/`
+  (done, layout 2);
 - install `postgresql-client-16` from the PGDG apt repo in `backend/Dockerfile`
   so `pg_dump`/`pg_restore` match the `postgres:16` server instead of whatever
-  Debian ships.
+  Debian ships. Not done: the image already ships client 17, every pg_dump
+  backup made so far is archive format 1.16, and pg_restore 16 refuses that
+  ("unsupported version (1.16) in file header"). The client stays at or above
+  the server version; the restore tolerates only the `SET transaction_timeout`
+  that pg_restore 17 sends to a 16 server.
 
 ## Bokföringslagen note
 

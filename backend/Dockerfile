@@ -2,7 +2,10 @@ FROM python:3.11-slim
 
 WORKDIR /app
 
-# Install system dependencies for WeasyPrint and PostgreSQL
+# Install system dependencies for WeasyPrint and PostgreSQL.
+# postgresql-client must be at least the major version of the postgres server image:
+# pg_dump refuses newer servers, and pg_restore cannot read dumps from a newer pg_dump
+# (the backups made so far come from pg_dump 17, archive format 1.16).
 RUN apt-get update && apt-get install -y \
     gcc \
     postgresql-client \

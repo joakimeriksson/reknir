@@ -145,33 +145,39 @@ Visit your domain: `https://reknir.yourdomain.com`
 
 Automatic backups are configured via **Settings → Systembackup → Automatisk backup**. Options include backup interval (6h to 14 days) and maximum number of backups to retain.
 
-A backup is a self-contained `reknir_backup_<timestamp>.zip` in `./backups/`:
-every table as JSON (all companies, users with bcrypt password hashes, AI and
-backup settings), every stored file (attachments, archived invoice PDFs,
-receipts, logos, AI uploads), one SIE4 file per fiscal year, JSON Schema for
-the format, and a manifest with a SHA-256 for every member. It does not depend
-on PostgreSQL tooling and restores into a fresh installation of the same or a
-newer Reknir version. See [docs/PORTABLE_ARCHIVE.md](PORTABLE_ARCHIVE.md).
+A backup is a `reknir_backup_<timestamp>.tar.gz` in `./backups/`: a `pg_dump`
+of the whole database (all companies, users, settings, audit log), every stored
+file (attachments, archived invoice PDFs, receipts, logos, AI uploads), and a
+manifest with the schema revision and a SHA-256 for every member. Restoring
+loads the database as it was when the backup was taken and then runs the
+migrations on it, so a backup restores into the same or any newer Reknir
+version, and tables added in later versions need no changes to the backup.
 
 Manual backups and restores via CLI:
 
 ```bash
-docker compose exec backend python -m app.cli backup                 # create JSON + files backup
-docker compose exec backend python -m app.cli backup --sql           # legacy pg_dump backup
+docker compose exec backend python -m app.cli backup                 # create a backup
 docker compose exec backend python -m app.cli list-backups
-docker compose exec backend python -m app.cli verify-backup /backups/reknir_backup_xxx.zip
-docker compose exec -it backend python -m app.cli restore /backups/reknir_backup_xxx.zip
+docker compose exec backend python -m app.cli verify-backup /backups/reknir_backup_xxx.tar.gz
+docker compose exec -it backend python -m app.cli restore /backups/reknir_backup_xxx.tar.gz
 ```
 
-Restore is all-or-nothing: the archive is verified, loaded into a temporary
-database and a temporary files directory, validated, and only then swapped in.
-The previous database is kept as `reknir_pre_restore` and the previous upload
-folders as `uploads/<name>_pre_restore` until the next restore. Backups made
-with the old `.tar.gz` format can still be restored.
+Restore is all-or-nothing: the checksums are verified, the dump is restored into
+a temporary database and the files into a temporary directory, the migrations
+run, the bookkeeping is validated, and only then is everything swapped in. The
+previous database is kept as `reknir_pre_restore` and the previous upload
+folders as `uploads/<name>_pre_restore` until the next restore.
 
-Keep copies of `./backups/*.zip` off the server (download them from Settings or
-copy them with `scp`/`rsync`); the backup directory itself is on the same disk
-as the data it protects.
+The backend image's `pg_dump`/`pg_restore` must be at least the major version
+of the PostgreSQL server (see `backend/Dockerfile`).
+
+Keep copies of `./backups/` off the server (download them from Settings or copy
+them with `scp`/`rsync`); the backup directory itself is on the same disk as the
+data it protects.
+
+`python -m app.cli backup --json` writes the portable JSON + files archive
+(`reknir_backup_<timestamp>.zip`) instead, which needs no PostgreSQL to read; see
+[docs/PORTABLE_ARCHIVE.md](PORTABLE_ARCHIVE.md). Both kinds can be restored.
 
 To move a single company to another Reknir instance, use
 `python -m app.cli export-company <id>` and `import-company <archive.zip>`, or
