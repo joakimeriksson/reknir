@@ -78,7 +78,7 @@ export default function ProfilePanel() {
   }
 
   return (
-    <div className="space-y-6 max-w-2xl">
+    <div className="space-y-6">
       <form onSubmit={handleProfileSave} className="card">
         <h2 className="text-xl font-semibold flex items-center gap-2 mb-4">
           <UserCog className="w-5 h-5" />
