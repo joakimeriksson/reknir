@@ -31,7 +31,7 @@ manual verifications, invoice and payment postings, expenses and reversals all
 check `ledger_service.assert_period_open` and answer 403. Locking also sets
 `locked=true` on the verifications up to that date. A lock only moves forward;
 every lock is kept as history. In the UI: **Rapporter → Momsrapport → Lås
-perioden** (pre-filled with the period's last day) and **Inställningar → Låst period**.
+perioden** (pre-filled with the period's last day) and **Företagsinställningar → Räkenskapsår**.
 
 ## 4. Gaps in a series are detected and explained
 
@@ -54,8 +54,8 @@ import, restore) write a single summary entry instead.
 
     GET /api/audit-log/?company_id=&table_name=&record_id=&limit=
 
-Shown on each verification page (**Historik**) and under **Inställningar →
-Behandlingshistorik**. The log, the period locks, the gap explanations and the
+Shown on each verification page (**Historik**) and under **Företagsinställningar →
+Historik**. The log, the period locks, the gap explanations and the
 reversal links are all part of the portable archive, so a restore keeps them.
 
 ## 6. Reports added

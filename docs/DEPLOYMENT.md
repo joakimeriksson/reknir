@@ -143,7 +143,7 @@ Visit your domain: `https://reknir.yourdomain.com`
 
 ### Setup Automated Backups
 
-Automatic backups are configured via **Settings → Systembackup → Automatisk backup**. Options include backup interval (6h to 14 days) and maximum number of backups to retain.
+Automatic backups are configured via **Systeminställningar → Backup → Automatisk backup**. Options include backup interval (6h to 14 days) and maximum number of backups to retain.
 
 A backup is a self-contained `reknir_backup_<timestamp>.zip` in `./backups/`:
 every table as JSON (all companies, users with bcrypt password hashes, AI and
@@ -175,7 +175,8 @@ as the data it protects.
 
 To move a single company to another Reknir instance, use
 `python -m app.cli export-company <id>` and `import-company <archive.zip>`, or
-the **Företagsarkiv** buttons on the Settings page.
+**Företagsinställningar → Import/Export** (export) and **Systeminställningar →
+Företag** (import).
 
 ### Monitoring
 

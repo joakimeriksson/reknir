@@ -1,27 +1,35 @@
 import { useState, useEffect, useMemo } from 'react'
-import { companyApi, sie4Api, accountApi, fiscalYearApi, postingTemplateApi, backupApi, attachmentApi, aiApi } from '@/services/api'
-import type { Account, FiscalYear, PostingTemplate, PostingTemplateLine, BackupInfo, BackupScheduleResponse, Attachment, AISettings, OllamaModel, OllamaHealth } from '@/types'
-import { VATReportingPeriod, AccountingBasis, PaymentType, AttachmentRole } from '@/types'
-import { Plus, Trash2, GripVertical, Building2, Edit2, Save, X, Calendar, Upload, Image, Layout, Download, HardDrive, RotateCcw, Loader2, CreditCard, Paperclip, Clock, Bot } from 'lucide-react'
-import RestoreModal from '@/components/RestoreModal'
+import { companyApi, sie4Api, accountApi, fiscalYearApi, postingTemplateApi, backupApi, attachmentApi } from '@/services/api'
+import type { Account, FiscalYear, PostingTemplate, PostingTemplateLine, Attachment } from '@/types'
+import { VATReportingPeriod, PaymentType, AttachmentRole } from '@/types'
+import { Plus, Trash2, GripVertical, Building2, Edit2, Save, X, Calendar, Upload, Image, Download, Loader2, CreditCard, Paperclip } from 'lucide-react'
 import SIE4ImportModal from '@/components/SIE4ImportModal'
 import PeriodLockPanel from '@/components/compliance/PeriodLockPanel'
 import AuditHistory from '@/components/compliance/AuditHistory'
-import ProfilePanel from '@/components/ProfilePanel'
-import { useAuth } from '@/contexts/AuthContext'
+import CompanyFormFields, { emptyCompanyForm, formatCompanyError } from '@/components/settings/CompanyFormFields'
+import SettingsTabs from '@/components/settings/SettingsTabs'
 import { useCompany } from '@/contexts/CompanyContext'
 import { useFiscalYear } from '@/contexts/FiscalYearContext'
-import { useLayoutSettings, ModalType } from '@/contexts/LayoutSettingsContext'
+import { ModalType } from '@/contexts/LayoutSettingsContext'
 import { useAttachmentPreviewController } from '@/hooks/useAttachmentPreviewController'
 import FiscalYearSelector from '@/components/FiscalYearSelector'
 import { useToast } from '@/contexts/ToastContext'
 
+type CompanyTab = 'company' | 'fiscal' | 'templates' | 'import' | 'attachments' | 'history'
+
+const COMPANY_TABS: { id: CompanyTab; label: string }[] = [
+  { id: 'company', label: 'Företag' },
+  { id: 'fiscal', label: 'Räkenskapsår' },
+  { id: 'templates', label: 'Konteringsmallar' },
+  { id: 'import', label: 'Import/Export' },
+  { id: 'attachments', label: 'Bilagor' },
+  { id: 'history', label: 'Historik' },
+]
+
 export default function SettingsPage() {
-  const { user } = useAuth()
-  const { selectedCompany, setSelectedCompany, companies, loadCompanies } = useCompany()
+  const { selectedCompany, setSelectedCompany, loadCompanies } = useCompany()
   const { showToast } = useToast()
   const { selectedFiscalYear } = useFiscalYear()
-  const { settings: layoutSettings, updateSettings: updateLayoutSettings } = useLayoutSettings()
   const [allAccounts, setAllAccounts] = useState<Account[]>([])
   const [fiscalYears, setFiscalYears] = useState<FiscalYear[]>([])
   const [accountCountsByFiscalYear, setAccountCountsByFiscalYear] = useState<Record<number, number>>({})
@@ -37,23 +45,12 @@ export default function SettingsPage() {
     template_lines: []
   })
   const [loading, setLoading] = useState(false)
-  const [activeTab, setActiveTab] = useState<'company' | 'fiscal' | 'templates' | 'import' | 'layout' | 'ai' | 'profile'>('company')
+  const [activeTab, setActiveTab] = useState<CompanyTab>('company')
   const [showCreateFiscalYear, setShowCreateFiscalYear] = useState(false)
   const [uploadingLogo, setUploadingLogo] = useState(false)
   const [logoUrl, setLogoUrl] = useState<string | null>(null)
-  const [backups, setBackups] = useState<BackupInfo[]>([])
-  const [loadingBackups, setLoadingBackups] = useState(false)
-  const [creatingBackup, setCreatingBackup] = useState(false)
-  const [downloadingBackup, setDownloadingBackup] = useState<string | null>(null)
-  const [showRestoreModal, setShowRestoreModal] = useState(false)
   const [showSIE4ImportModal, setShowSIE4ImportModal] = useState(false)
   const [exportingCompany, setExportingCompany] = useState(false)
-  const [importingCompany, setImportingCompany] = useState(false)
-  const [schedule, setSchedule] = useState<BackupScheduleResponse | null>(null)
-  const [scheduleForm, setScheduleForm] = useState({ enabled: false, interval_hours: 24, max_backups: 30, preferred_time: '03:00' })
-  const [savingSchedule, setSavingSchedule] = useState(false)
-  const [deletingBackup, setDeletingBackup] = useState<string | null>(null)
-  const [backupToDelete, setBackupToDelete] = useState<string | null>(null)
   const [attachments, setAttachments] = useState<Attachment[]>([])
   const [loadingAttachments, setLoadingAttachments] = useState(false)
   const [deletingAttachment, setDeletingAttachment] = useState<number | null>(null)
@@ -68,30 +65,7 @@ export default function SettingsPage() {
     bic: '',
   })
   const [editingCompany, setEditingCompany] = useState(false)
-  const [showCreateCompany, setShowCreateCompany] = useState(false)
-  // AI settings state
-  const [, setAiSettings] = useState<AISettings | null>(null)
-  const [aiModels, setAiModels] = useState<OllamaModel[]>([])
-  const [aiHealth, setAiHealth] = useState<OllamaHealth | null>(null)
-  const [aiLoading, setAiLoading] = useState(false)
-  const [aiSaving, setAiSaving] = useState(false)
-  const [aiTesting, setAiTesting] = useState(false)
-  const [aiForm, setAiForm] = useState({ ai_enabled: false, ollama_url: '', ollama_model: '', system_prompt: '' })
-  const [companyForm, setCompanyForm] = useState({
-    name: '',
-    org_number: '',
-    address: '',
-    postal_code: '',
-    city: '',
-    phone: '',
-    email: '',
-    fiscal_year_start: new Date().getFullYear() + '-01-01',
-    fiscal_year_end: new Date().getFullYear() + '-12-31',
-    vat_number: '',
-    accounting_basis: AccountingBasis.ACCRUAL,
-    vat_reporting_period: VATReportingPeriod.QUARTERLY,
-    is_vat_registered: true,
-  })
+  const [companyForm, setCompanyForm] = useState(emptyCompanyForm())
 
   const getNextFiscalYearDefaults = () => {
     const currentYear = new Date().getFullYear()
@@ -114,14 +88,7 @@ export default function SettingsPage() {
   }, [selectedCompany, selectedFiscalYear])
 
   useEffect(() => {
-    if (activeTab === 'import') {
-      loadBackups()
-      loadSchedule()
-    }
-  }, [activeTab])
-
-  useEffect(() => {
-    if (activeTab === 'layout' && selectedCompany) {
+    if (activeTab === 'attachments' && selectedCompany) {
       loadAttachments()
     }
   }, [activeTab, selectedCompany])
@@ -147,74 +114,6 @@ export default function SettingsPage() {
       if (objectUrl) URL.revokeObjectURL(objectUrl)
     }
   }, [selectedCompany?.id, selectedCompany?.logo_filename])
-
-  const loadAiSettings = async () => {
-    setAiLoading(true)
-    try {
-      const settingsResp = await aiApi.getSettings()
-      setAiSettings(settingsResp.data)
-      setAiForm({
-        ai_enabled: settingsResp.data.ai_enabled,
-        ollama_url: settingsResp.data.ollama_url,
-        ollama_model: settingsResp.data.ollama_model,
-        system_prompt: settingsResp.data.system_prompt || '',
-      })
-      // Only load models list (no health test)
-      try {
-        const modelsResp = await aiApi.listModels()
-        setAiModels(modelsResp.data)
-      } catch {
-        setAiModels([])
-      }
-    } catch {
-      // AI may not be configured yet
-    } finally {
-      setAiLoading(false)
-    }
-  }
-
-  const testAiConnection = async () => {
-    setAiTesting(true)
-    setAiHealth(null)
-    try {
-      // Save current form first so the test uses the right URL/model
-      await aiApi.updateSettings({
-        ollama_url: aiForm.ollama_url,
-        ollama_model: aiForm.ollama_model,
-      })
-      const healthResp = await aiApi.getHealth()
-      setAiHealth(healthResp.data)
-      // Refresh models list
-      try {
-        const modelsResp = await aiApi.listModels()
-        setAiModels(modelsResp.data)
-      } catch {
-        // ignore
-      }
-    } catch {
-      setAiHealth({ reachable: false, model_available: null, model_name: null, error: 'Kunde inte nå backend' })
-    } finally {
-      setAiTesting(false)
-    }
-  }
-
-  const saveAiSettings = async () => {
-    setAiSaving(true)
-    try {
-      const resp = await aiApi.updateSettings({
-        ai_enabled: aiForm.ai_enabled,
-        ollama_url: aiForm.ollama_url,
-        ollama_model: aiForm.ollama_model,
-        system_prompt: aiForm.system_prompt || null,
-      })
-      setAiSettings(resp.data)
-      showToast('AI-inställningar sparade', 'success')
-    } catch {
-      showToast('Kunde inte spara AI-inställningar', 'error')
-    } finally {
-      setAiSaving(false)
-    }
-  }
 
   const loadData = async () => {
     if (!selectedCompany) {
@@ -429,42 +328,7 @@ export default function SettingsPage() {
 
   const cancelEditCompany = () => {
     setEditingCompany(false)
-    setCompanyForm({
-      name: '',
-      org_number: '',
-      address: '',
-      postal_code: '',
-      city: '',
-      phone: '',
-      email: '',
-      fiscal_year_start: new Date().getFullYear() + '-01-01',
-      fiscal_year_end: new Date().getFullYear() + '-12-31',
-      vat_number: '',
-      accounting_basis: AccountingBasis.ACCRUAL,
-      vat_reporting_period: VATReportingPeriod.QUARTERLY,
-      is_vat_registered: true,
-    })
-  }
-
-  const formatErrorMessage = (error: any): string => {
-    if (error.response?.data?.detail) {
-      const detail = error.response.data.detail
-      // If detail is an array of validation errors
-      if (Array.isArray(detail)) {
-        return detail.map((err: any) => {
-          const field = err.loc?.slice(-1)[0] || 'okänt fält'
-          const message = err.msg || err.type || 'valideringsfel'
-          return `• ${field}: ${message}`
-        }).join('\n')
-      }
-      // If detail is a string
-      if (typeof detail === 'string') {
-        return detail
-      }
-      // If detail is an object, try to stringify it
-      return JSON.stringify(detail, null, 2)
-    }
-    return `Ett fel uppstod: ${error.message || 'Okänt fel'}`
+    setCompanyForm(emptyCompanyForm())
   }
 
   const handleUpdateCompany = async () => {
@@ -479,38 +343,7 @@ export default function SettingsPage() {
       await loadCompanies()
     } catch (error: any) {
       console.error('Failed to update company:', error)
-      showToast(formatErrorMessage(error), 'error')
-    } finally {
-      setLoading(false)
-    }
-  }
-
-  const handleCreateCompany = async () => {
-    try {
-      setLoading(true)
-      const response = await companyApi.create(companyForm)
-      showToast('Nytt företag skapat!', 'success')
-      setShowCreateCompany(false)
-      setCompanyForm({
-        name: '',
-        org_number: '',
-        address: '',
-        postal_code: '',
-        city: '',
-        phone: '',
-        email: '',
-        fiscal_year_start: new Date().getFullYear() + '-01-01',
-        fiscal_year_end: new Date().getFullYear() + '-12-31',
-        vat_number: '',
-        accounting_basis: AccountingBasis.ACCRUAL,
-        vat_reporting_period: VATReportingPeriod.QUARTERLY,
-        is_vat_registered: true,
-      })
-      await loadCompanies()
-      setSelectedCompany(response.data)
-    } catch (error: any) {
-      console.error('Failed to create company:', error)
-      showToast(formatErrorMessage(error), 'error')
+      showToast(formatCompanyError(error), 'error')
     } finally {
       setLoading(false)
     }
@@ -542,34 +375,6 @@ export default function SettingsPage() {
     }
   }
 
-  const handleImportCompany = async (event: React.ChangeEvent<HTMLInputElement>) => {
-    const file = event.target.files?.[0]
-    event.target.value = ''
-    if (!file) return
-    if (!file.name.endsWith('.zip')) {
-      showToast('Filen måste vara ett .zip-arkiv', 'error')
-      return
-    }
-    try {
-      setImportingCompany(true)
-      const response = await backupApi.importCompany(file)
-      const warnings = response.data.warnings || []
-      showToast(
-        warnings.length > 0
-          ? `Företag importerat med ${warnings.length} varning(ar) – se konsolen`
-          : 'Företag importerat som nytt företag',
-        warnings.length > 0 ? 'error' : 'success',
-      )
-      if (warnings.length > 0) console.warn('Company import warnings:', warnings)
-      await loadCompanies()
-    } catch (error: any) {
-      console.error('Company import failed:', error)
-      showToast(error.response?.data?.detail || 'Import misslyckades', 'error')
-    } finally {
-      setImportingCompany(false)
-    }
-  }
-
   const handleSIE4Export = async (includeVerifications: boolean) => {
     if (!selectedCompany || !selectedFiscalYear) {
       showToast('Välj ett räkenskapsår först', 'error')
@@ -598,130 +403,6 @@ export default function SettingsPage() {
     } finally {
       setLoading(false)
     }
-  }
-
-  const loadBackups = async () => {
-    setLoadingBackups(true)
-    try {
-      const response = await backupApi.list()
-      setBackups(response.data)
-    } catch (error: any) {
-      console.error('Failed to load backups:', error)
-      showToast('Kunde inte ladda backups', 'error')
-    } finally {
-      setLoadingBackups(false)
-    }
-  }
-
-  const handleCreateBackup = async () => {
-    setCreatingBackup(true)
-    try {
-      await backupApi.create()
-      showToast('Backup skapad!', 'success')
-      loadBackups()
-    } catch (error: any) {
-      console.error('Backup creation failed:', error)
-      showToast(error.response?.data?.detail || 'Kunde inte skapa backup', 'error')
-    } finally {
-      setCreatingBackup(false)
-    }
-  }
-
-  const handleDeleteBackup = async () => {
-    if (!backupToDelete) return
-    setDeletingBackup(backupToDelete)
-    try {
-      await backupApi.delete(backupToDelete)
-      showToast('Backup raderad', 'success')
-      loadBackups()
-    } catch (error: any) {
-      showToast(error.response?.data?.detail || 'Kunde inte radera backup', 'error')
-    } finally {
-      setDeletingBackup(null)
-      setBackupToDelete(null)
-    }
-  }
-
-  const loadSchedule = async () => {
-    try {
-      const response = await backupApi.getSchedule()
-      setSchedule(response.data)
-      setScheduleForm({
-        enabled: response.data.enabled,
-        interval_hours: response.data.interval_hours,
-        max_backups: response.data.max_backups,
-        preferred_time: utcTimeToLocal(response.data.preferred_time),
-      })
-    } catch (error: any) {
-      console.error('Failed to load schedule:', error)
-    }
-  }
-
-  const handleSaveSchedule = async () => {
-    setSavingSchedule(true)
-    try {
-      const payload = { ...scheduleForm, preferred_time: localTimeToUtc(scheduleForm.preferred_time) }
-      const response = await backupApi.updateSchedule(payload)
-      setSchedule(response.data)
-      showToast('Schemaläggning sparad!', 'success')
-    } catch (error: any) {
-      showToast(error.response?.data?.detail || 'Kunde inte spara schemaläggning', 'error')
-    } finally {
-      setSavingSchedule(false)
-    }
-  }
-
-  const handleDownloadBackup = async (filename: string) => {
-    setDownloadingBackup(filename)
-    try {
-      const response = await backupApi.download(filename)
-
-      const blob = new Blob([response.data], { type: 'application/gzip' })
-      const url = window.URL.createObjectURL(blob)
-      const a = document.createElement('a')
-      a.href = url
-      a.download = filename
-      document.body.appendChild(a)
-      a.click()
-      window.URL.revokeObjectURL(url)
-      document.body.removeChild(a)
-
-      showToast('Backup nedladdad', 'success')
-    } catch (error: any) {
-      console.error('Backup download failed:', error)
-      showToast('Kunde inte ladda ner backup', 'error')
-    } finally {
-      setDownloadingBackup(null)
-    }
-  }
-
-  const formatFileSize = (bytes: number): string => {
-    if (bytes < 1024) return `${bytes} B`
-    if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`
-    return `${(bytes / (1024 * 1024)).toFixed(1)} MB`
-  }
-
-  const formatBackupDate = (dateString: string): string => {
-    return new Date(dateString).toLocaleString('sv-SE', {
-      year: 'numeric', month: '2-digit', day: '2-digit',
-      hour: '2-digit', minute: '2-digit',
-    })
-  }
-
-  // Convert "HH:MM" in UTC to "HH:MM" in the browser's local timezone
-  const utcTimeToLocal = (utcTime: string): string => {
-    const [h, m] = utcTime.split(':').map(Number)
-    const d = new Date()
-    d.setUTCHours(h, m, 0, 0)
-    return d.toLocaleTimeString('sv-SE', { hour: '2-digit', minute: '2-digit' })
-  }
-
-  // Convert "HH:MM" in the browser's local timezone to "HH:MM" in UTC
-  const localTimeToUtc = (localTime: string): string => {
-    const [h, m] = localTime.split(':').map(Number)
-    const d = new Date()
-    d.setHours(h, m, 0, 0)
-    return d.toISOString().slice(11, 16)
   }
 
   const handleVATReportingPeriodChange = async (newPeriod: VATReportingPeriod) => {
@@ -1048,9 +729,9 @@ export default function SettingsPage() {
   if (!selectedCompany && !loading) {
     return (
       <div className="card">
-        <h2 className="text-2xl font-bold mb-4">Inställningar</h2>
+        <h2 className="text-2xl font-bold mb-4">Företagsinställningar</h2>
         <p className="text-gray-600">
-          Inget företag hittat. Skapa ett företag först.
+          Inget företag hittat. En administratör skapar företag under Systeminställningar.
         </p>
       </div>
     )
@@ -1059,92 +740,15 @@ export default function SettingsPage() {
   return (
     <div>
       <div className="mb-6 flex items-start justify-between">
-        <h1 className="text-3xl font-bold">Inställningar</h1>
-        <FiscalYearSelector />
+        <h1 className="text-3xl font-bold">Företagsinställningar</h1>
+        {(activeTab === 'templates' || activeTab === 'import') && <FiscalYearSelector />}
       </div>
 
-      {/* Tabs */}
-      <div className="border-b border-gray-200 mb-6">
-        <nav className="-mb-px flex space-x-8">
-          <button
-            onClick={() => setActiveTab('company')}
-            className={`py-4 px-1 border-b-2 font-medium text-sm ${
-              activeTab === 'company'
-                ? 'border-primary-500 text-primary-600'
-                : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
-            }`}
-          >
-            Företag
-          </button>
-          <button
-            onClick={() => setActiveTab('fiscal')}
-            className={`py-4 px-1 border-b-2 font-medium text-sm ${
-              activeTab === 'fiscal'
-                ? 'border-primary-500 text-primary-600'
-                : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
-            }`}
-          >
-            Räkenskapsår
-          </button>
-          <button
-            onClick={() => setActiveTab('templates')}
-            className={`py-4 px-1 border-b-2 font-medium text-sm ${
-              activeTab === 'templates'
-                ? 'border-primary-500 text-primary-600'
-                : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
-            }`}
-          >
-            Konteringsmallar
-          </button>
-          <button
-            onClick={() => setActiveTab('import')}
-            className={`py-4 px-1 border-b-2 font-medium text-sm ${
-              activeTab === 'import'
-                ? 'border-primary-500 text-primary-600'
-                : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
-            }`}
-          >
-            Import/Export
-          </button>
-          <button
-            onClick={() => setActiveTab('layout')}
-            className={`py-4 px-1 border-b-2 font-medium text-sm ${
-              activeTab === 'layout'
-                ? 'border-primary-500 text-primary-600'
-                : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
-            }`}
-          >
-            Bilagor
-          </button>
-          <button
-            onClick={() => setActiveTab('profile')}
-            className={`py-4 px-1 border-b-2 font-medium text-sm ${
-              activeTab === 'profile'
-                ? 'border-primary-500 text-primary-600'
-                : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
-            }`}
-          >
-            Mitt konto
-          </button>
-          {user?.is_admin && (
-            <button
-              onClick={() => {
-                setActiveTab('ai')
-                loadAiSettings()
-              }}
-              className={`py-4 px-1 border-b-2 font-medium text-sm ${
-                activeTab === 'ai'
-                  ? 'border-primary-500 text-primary-600'
-                  : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
-              }`}
-            >
-              AI-assistent
-            </button>
-          )}
-        </nav>
-      </div>
+      <SettingsTabs tabs={COMPANY_TABS} active={activeTab} onChange={setActiveTab} />
 
-      {activeTab === 'profile' && <ProfilePanel />}
+      {activeTab === 'history' && selectedCompany && (
+        <AuditHistory companyId={selectedCompany.id} />
+      )}
 
       {/* Company Tab */}
       {activeTab === 'company' && (
@@ -1156,32 +760,20 @@ export default function SettingsPage() {
             <Building2 className="w-5 h-5" />
             Företagsinformation
           </h2>
-          <div className="flex gap-2">
-            {!editingCompany && !showCreateCompany && (
-              <>
-                <button
-                  onClick={startEditCompany}
-                  disabled={loading}
-                  className="btn btn-secondary flex items-center gap-2"
-                >
-                  <Edit2 className="w-4 h-4" />
-                  Redigera
-                </button>
-                <button
-                  onClick={() => setShowCreateCompany(true)}
-                  disabled={loading}
-                  className="btn btn-primary flex items-center gap-2"
-                >
-                  <Plus className="w-4 h-4" />
-                  Nytt företag
-                </button>
-              </>
-            )}
-          </div>
+          {!editingCompany && (
+            <button
+              onClick={startEditCompany}
+              disabled={loading}
+              className="btn btn-secondary flex items-center gap-2"
+            >
+              <Edit2 className="w-4 h-4" />
+              Redigera
+            </button>
+          )}
         </div>
 
         {/* View Mode */}
-        {!editingCompany && !showCreateCompany && selectedCompany && (
+        {!editingCompany && selectedCompany && (
           <div className="space-y-6">
             <div>
               <h3 className="text-sm font-semibold text-gray-700 mb-3 uppercase tracking-wide">Grunduppgifter</h3>
@@ -1266,233 +858,28 @@ export default function SettingsPage() {
           </div>
         )}
 
-        {/* Edit/Create Mode */}
-        {(editingCompany || showCreateCompany) && (
+        {/* Edit Mode */}
+        {editingCompany && (
           <div className="space-y-6">
-            {/* Grunduppgifter */}
-            <div>
-              <h3 className="text-sm font-semibold text-gray-700 mb-3 uppercase tracking-wide">Grunduppgifter</h3>
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">
-                    Företagsnamn *
-                  </label>
-                  <input
-                    type="text"
-                    value={companyForm.name}
-                    onChange={(e) => setCompanyForm({ ...companyForm, name: e.target.value })}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-md"
-                    required
-                  />
-                </div>
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">
-                    Organisationsnummer *
-                  </label>
-                  <input
-                    type="text"
-                    value={companyForm.org_number}
-                    onChange={(e) => setCompanyForm({ ...companyForm, org_number: e.target.value })}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-md"
-                    placeholder="123456-7890 eller 1234567890"
-                    pattern="^\d{6}-?\d{4}$"
-                    required
-                  />
-                  <p className="mt-1 text-xs text-gray-500">
-                    10 siffror, med eller utan bindestreck (t.ex. 123456-7890)
-                  </p>
-                </div>
-              </div>
-            </div>
-
-            {/* Kontaktuppgifter */}
-            <div>
-              <h3 className="text-sm font-semibold text-gray-700 mb-3 uppercase tracking-wide">Kontaktuppgifter</h3>
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <div className="md:col-span-2">
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Adress</label>
-                  <input
-                    type="text"
-                    value={companyForm.address}
-                    onChange={(e) => setCompanyForm({ ...companyForm, address: e.target.value })}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-md"
-                    placeholder="Gatunamn 123"
-                  />
-                </div>
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Postnummer</label>
-                  <input
-                    type="text"
-                    value={companyForm.postal_code}
-                    onChange={(e) => setCompanyForm({ ...companyForm, postal_code: e.target.value })}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-md"
-                    placeholder="123 45"
-                  />
-                </div>
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Stad</label>
-                  <input
-                    type="text"
-                    value={companyForm.city}
-                    onChange={(e) => setCompanyForm({ ...companyForm, city: e.target.value })}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-md"
-                    placeholder="Stockholm"
-                  />
-                </div>
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Telefon</label>
-                  <input
-                    type="tel"
-                    value={companyForm.phone}
-                    onChange={(e) => setCompanyForm({ ...companyForm, phone: e.target.value })}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-md"
-                    placeholder="08-123 456 78"
-                  />
-                </div>
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">E-post</label>
-                  <input
-                    type="email"
-                    value={companyForm.email}
-                    onChange={(e) => setCompanyForm({ ...companyForm, email: e.target.value })}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-md"
-                    placeholder="info@företag.se"
-                  />
-                </div>
-              </div>
-            </div>
-
-            {/* Bokföringsinställningar */}
-            <div>
-              <h3 className="text-sm font-semibold text-gray-700 mb-3 uppercase tracking-wide">Bokföringsinställningar</h3>
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">
-                    Räkenskapsår start *
-                  </label>
-                  <input
-                    type="date"
-                    value={companyForm.fiscal_year_start}
-                    onChange={(e) => setCompanyForm({ ...companyForm, fiscal_year_start: e.target.value })}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-md"
-                    required
-                  />
-                </div>
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">
-                    Räkenskapsår slut *
-                  </label>
-                  <input
-                    type="date"
-                    value={companyForm.fiscal_year_end}
-                    onChange={(e) => setCompanyForm({ ...companyForm, fiscal_year_end: e.target.value })}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-md"
-                    required
-                  />
-                </div>
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">
-                    Bokföringsmetod
-                  </label>
-                  <select
-                    value={companyForm.accounting_basis}
-                    onChange={(e) => setCompanyForm({ ...companyForm, accounting_basis: e.target.value as AccountingBasis })}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-md"
-                  >
-                    <option value="accrual">Bokföringsmässiga grunder</option>
-                    <option value="cash">Kontantmetoden</option>
-                  </select>
-                </div>
-                <div className="md:col-span-2">
-                  <label className="flex items-center gap-2 cursor-pointer">
-                    <input
-                      type="checkbox"
-                      checked={companyForm.is_vat_registered}
-                      onChange={(e) => setCompanyForm({ ...companyForm, is_vat_registered: e.target.checked })}
-                      className="w-4 h-4 text-primary-600 border-gray-300 rounded focus:ring-primary-500"
-                    />
-                    <span className="text-sm font-medium text-gray-700">
-                      Företaget är momsregistrerat
-                    </span>
-                  </label>
-                  <p className="mt-1 text-xs text-gray-500 ml-6">
-                    Avmarkera om företaget inte är registrerat för moms hos Skatteverket
-                  </p>
-                </div>
-                <div>
-                  <label className={`block text-sm font-medium mb-1 ${companyForm.is_vat_registered ? 'text-gray-700' : 'text-gray-400'}`}>
-                    Momsredovisningsperiod
-                  </label>
-                  <select
-                    value={companyForm.vat_reporting_period}
-                    onChange={(e) => setCompanyForm({ ...companyForm, vat_reporting_period: e.target.value as VATReportingPeriod })}
-                    disabled={!companyForm.is_vat_registered}
-                    className={`w-full px-3 py-2 border border-gray-300 rounded-md ${
-                      !companyForm.is_vat_registered ? 'bg-gray-100 text-gray-400 cursor-not-allowed' : ''
-                    }`}
-                  >
-                    <option value="monthly">Månadsvis</option>
-                    <option value="quarterly">Kvartalsvis</option>
-                    <option value="yearly">Årlig</option>
-                  </select>
-                  {!companyForm.is_vat_registered && (
-                    <p className="mt-1 text-xs text-gray-400">
-                      Ej relevant för företag som inte är momsregistrerade
-                    </p>
-                  )}
-                </div>
-              </div>
-            </div>
+            <CompanyFormFields form={companyForm} onChange={setCompanyForm} />
 
             <div className="flex gap-2 pt-4 border-t">
               <button
-                onClick={editingCompany ? handleUpdateCompany : handleCreateCompany}
+                onClick={handleUpdateCompany}
                 disabled={loading || !companyForm.name || !companyForm.org_number}
                 className="btn btn-primary flex items-center gap-2"
               >
                 <Save className="w-4 h-4" />
-                {editingCompany ? 'Spara ändringar' : 'Skapa företag'}
+                Spara ändringar
               </button>
               <button
-                onClick={editingCompany ? cancelEditCompany : () => setShowCreateCompany(false)}
+                onClick={cancelEditCompany}
                 disabled={loading}
                 className="btn btn-secondary flex items-center gap-2"
               >
                 <X className="w-4 h-4" />
                 Avbryt
               </button>
-            </div>
-          </div>
-        )}
-
-        {/* List of all companies */}
-        {companies.length > 1 && !editingCompany && !showCreateCompany && (
-          <div className="mt-6 pt-6 border-t">
-            <h3 className="text-sm font-medium text-gray-700 mb-3">Alla företag ({companies.length})</h3>
-            <div className="space-y-2">
-              {companies.map((company) => (
-                <div
-                  key={company.id}
-                  className={`flex items-center justify-between p-3 rounded-lg border ${
-                    selectedCompany?.id === company.id
-                      ? 'border-primary-500 bg-primary-50'
-                      : 'border-gray-200 hover:border-gray-300'
-                  }`}
-                >
-                  <div>
-                    <p className="font-medium text-gray-900">{company.name}</p>
-                    <p className="text-sm text-gray-600">Org.nr: {company.org_number}</p>
-                  </div>
-                  {selectedCompany?.id !== company.id && (
-                    <button
-                      onClick={() => setSelectedCompany(company)}
-                      className="text-sm text-primary-600 hover:text-primary-700 font-medium"
-                    >
-                      Välj
-                    </button>
-                  )}
-                </div>
-              ))}
             </div>
           </div>
         )}
@@ -1893,253 +1280,13 @@ export default function SettingsPage() {
       {/* Import/Export Tab */}
       {activeTab === 'import' && (
         <div>
-          {/* Compliance: period lock + processing history */}
-          {selectedCompany && (
-            <div className="mb-6 space-y-6">
-              <PeriodLockPanel companyId={selectedCompany.id} />
-              <AuditHistory companyId={selectedCompany.id} limit={50} />
-            </div>
-          )}
-
-          {/* Backup Section */}
-          <div className="card mb-6">
-            <div className="flex items-center gap-2 mb-4">
-              <HardDrive className="w-5 h-5 text-gray-600" />
-              <h2 className="text-xl font-semibold">Systembackup</h2>
-            </div>
-            <p className="text-gray-600 mb-4">
-              Skapa fullständiga backups av hela systemet: alla företag, användare och inställningar som JSON,
-              samt alla bilagor, fakturor, kvitton och logotyper. Arkivet är fristående (zip med JSON, filer och
-              SIE4 per räkenskapsår) och kan återställas i en ny installation.
-            </p>
-
-            {/* Create Backup */}
-            <div className="mb-6">
-              <button
-                onClick={handleCreateBackup}
-                disabled={creatingBackup || loading}
-                className="btn btn-primary inline-flex items-center"
-              >
-                {creatingBackup ? (
-                  <>
-                    <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                    Skapar backup...
-                  </>
-                ) : (
-                  <>
-                    <HardDrive className="w-4 h-4 mr-2" />
-                    Skapa backup
-                  </>
-                )}
-              </button>
-            </div>
-
-            {/* Schedule Section */}
-            <div className="border-t pt-4 mb-6">
-              <div className="flex items-center gap-2 mb-3">
-                <Clock className="w-4 h-4 text-gray-600" />
-                <h3 className="text-sm font-medium text-gray-700">Automatisk backup</h3>
-              </div>
-
-              <div className="space-y-4">
-                {/* Enable toggle */}
-                <label className="flex items-center gap-3 cursor-pointer">
-                  <input
-                    type="checkbox"
-                    checked={scheduleForm.enabled}
-                    onChange={(e) => setScheduleForm(prev => ({ ...prev, enabled: e.target.checked }))}
-                    className="w-4 h-4 rounded border-gray-300 text-primary-600 focus:ring-primary-500"
-                  />
-                  <span className="text-sm text-gray-700">Aktivera schemalagd backup</span>
-                </label>
-
-                {/* Interval and max backups */}
-                <div className="flex flex-wrap gap-4">
-                  <div>
-                    <label className="block text-xs text-gray-500 mb-1">Intervall</label>
-                    <select
-                      value={scheduleForm.interval_hours}
-                      onChange={(e) => setScheduleForm(prev => ({ ...prev, interval_hours: Number(e.target.value) }))}
-                      disabled={!scheduleForm.enabled}
-                      className="input text-sm w-44 disabled:opacity-50"
-                    >
-                      <option value={6}>Var 6:e timme</option>
-                      <option value={24}>Varje dygn</option>
-                      <option value={48}>Varannan dag</option>
-                      <option value={168}>Varje vecka</option>
-                      <option value={336}>Varannan vecka</option>
-                    </select>
-                  </div>
-                  <div>
-                    <label className="block text-xs text-gray-500 mb-1">Tid</label>
-                    <input
-                      type="time"
-                      value={scheduleForm.preferred_time}
-                      onChange={(e) => setScheduleForm(prev => ({ ...prev, preferred_time: e.target.value }))}
-                      disabled={!scheduleForm.enabled}
-                      className="input text-sm w-28 disabled:opacity-50"
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-xs text-gray-500 mb-1">Behåll senaste</label>
-                    <input
-                      type="number"
-                      min={1}
-                      value={scheduleForm.max_backups}
-                      onChange={(e) => setScheduleForm(prev => ({ ...prev, max_backups: Math.max(1, Number(e.target.value)) }))}
-                      disabled={!scheduleForm.enabled}
-                      className="input text-sm w-24 disabled:opacity-50"
-                    />
-                  </div>
-                </div>
-
-                {/* Status */}
-                {schedule && schedule.enabled && (
-                  <div className="text-xs text-gray-500 space-y-1">
-                    {schedule.last_backup_at && (
-                      <p>Senaste backup: {formatBackupDate(schedule.last_backup_at)}</p>
-                    )}
-                    {schedule.next_backup_at && (
-                      <p>Nästa backup: {formatBackupDate(schedule.next_backup_at)}</p>
-                    )}
-                  </div>
-                )}
-
-                {/* Save button */}
-                <button
-                  onClick={handleSaveSchedule}
-                  disabled={savingSchedule}
-                  className="btn btn-secondary inline-flex items-center text-sm"
-                >
-                  {savingSchedule ? (
-                    <>
-                      <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                      Sparar...
-                    </>
-                  ) : (
-                    <>
-                      <Save className="w-4 h-4 mr-2" />
-                      Spara inställningar
-                    </>
-                  )}
-                </button>
-              </div>
-            </div>
-
-            {/* Backup List */}
-            <div className="border-t pt-4">
-              <div className="flex items-center justify-between mb-3">
-                <h3 className="text-sm font-medium text-gray-700">Backups på servern</h3>
-                <button
-                  onClick={loadBackups}
-                  disabled={loadingBackups}
-                  className="text-sm text-blue-600 hover:text-blue-800"
-                >
-                  {loadingBackups ? 'Laddar...' : 'Uppdatera'}
-                </button>
-              </div>
-
-              {loadingBackups ? (
-                <div className="text-center py-4 text-gray-500">
-                  <Loader2 className="w-6 h-6 mx-auto mb-2 animate-spin" />
-                  Laddar backups...
-                </div>
-              ) : backups.length === 0 ? (
-                <div className="text-center py-4 text-gray-500">
-                  <p>Inga backups på servern.</p>
-                </div>
-              ) : (
-                <div className="overflow-x-auto">
-                  <table className="min-w-full">
-                    <thead className="bg-gray-50">
-                      <tr>
-                        <th className="px-3 py-2 text-left text-xs font-medium text-gray-500">Skapad</th>
-                        <th className="px-3 py-2 text-left text-xs font-medium text-gray-500">Version</th>
-                        <th className="px-3 py-2 text-left text-xs font-medium text-gray-500">Schema</th>
-                        <th className="px-3 py-2 text-left text-xs font-medium text-gray-500">Storlek</th>
-                        <th className="px-3 py-2 text-right text-xs font-medium text-gray-500">Åtgärder</th>
-                      </tr>
-                    </thead>
-                    <tbody className="divide-y divide-gray-200">
-                      {backups.map((backup) => (
-                        <tr key={backup.filename} className="hover:bg-gray-50">
-                          <td className="px-3 py-2 text-sm text-gray-900">
-                            {formatBackupDate(backup.created_at)}
-                          </td>
-                          <td className="px-3 py-2 text-sm text-gray-600">
-                            {backup.app_version}
-                            {backup.format === 'sql' && (
-                              <span className="ml-1 text-xs text-amber-600" title="Äldre pg_dump-format">(SQL)</span>
-                            )}
-                          </td>
-                          <td className="px-3 py-2 text-sm text-gray-600">{backup.schema_version}</td>
-                          <td className="px-3 py-2 text-sm text-gray-600">
-                            {formatFileSize(backup.size_bytes)}
-                          </td>
-                          <td className="px-3 py-2 text-right">
-                            <div className="flex items-center justify-end gap-2">
-                              <button
-                                onClick={() => handleDownloadBackup(backup.filename)}
-                                disabled={downloadingBackup === backup.filename}
-                                className="text-blue-600 hover:text-blue-800 p-1"
-                                title="Ladda ner"
-                              >
-                                {downloadingBackup === backup.filename ? (
-                                  <Loader2 className="w-4 h-4 animate-spin" />
-                                ) : (
-                                  <Download className="w-4 h-4" />
-                                )}
-                              </button>
-                              <button
-                                onClick={() => setBackupToDelete(backup.filename)}
-                                disabled={deletingBackup === backup.filename}
-                                className="text-red-600 hover:text-red-800 p-1"
-                                title="Radera"
-                              >
-                                {deletingBackup === backup.filename ? (
-                                  <Loader2 className="w-4 h-4 animate-spin" />
-                                ) : (
-                                  <Trash2 className="w-4 h-4" />
-                                )}
-                              </button>
-                            </div>
-                          </td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
-              )}
-            </div>
-
-            {/* Restore Button */}
-            <div className="border-t mt-4 pt-4">
-              <button
-                onClick={() => setShowRestoreModal(true)}
-                className="btn btn-secondary inline-flex items-center"
-              >
-                <RotateCcw className="w-4 h-4 mr-2" />
-                Återställ från backup
-              </button>
-              <p className="mt-2 text-sm text-gray-500">
-                Återställ systemet från en backup på servern eller ladda upp en backup-fil.
-              </p>
-            </div>
-
-            <div className="mt-4 p-3 bg-amber-50 border border-amber-200 rounded">
-              <p className="text-sm text-amber-800">
-                <strong>Varning:</strong> Återställning ersätter ALL data i systemet. Skapa alltid en backup
-                av nuvarande data innan du återställer.
-              </p>
-            </div>
-          </div>
-
           {/* Company archive Section */}
       <div className="card mb-6">
         <h2 className="text-xl font-semibold mb-4">Företagsarkiv</h2>
         <p className="text-gray-600 mb-4">
           Exportera hela företaget som ett fristående arkiv (JSON + alla bilagor, fakturor och kvitton, samt SIE4 per
-          räkenskapsår), eller importera ett sådant arkiv som ett nytt företag. Användare och lösenord ingår inte.
+          räkenskapsår). Användare och lösenord ingår inte. Arkivet kan importeras som ett nytt företag under
+          Systeminställningar.
         </p>
         <div className="flex flex-wrap gap-2">
           <button
@@ -2150,13 +1297,6 @@ export default function SettingsPage() {
             <Download className="w-4 h-4 mr-2" />
             {exportingCompany ? 'Exporterar...' : `Exportera ${selectedCompany?.name ?? 'företag'}`}
           </button>
-          {user?.is_admin && (
-            <label className={`btn btn-secondary inline-flex items-center cursor-pointer ${importingCompany ? 'opacity-50 pointer-events-none' : ''}`}>
-              <Upload className="w-4 h-4 mr-2" />
-              {importingCompany ? 'Importerar...' : 'Importera företagsarkiv'}
-              <input type="file" accept=".zip" onChange={handleImportCompany} className="hidden" disabled={importingCompany} />
-            </label>
-          )}
         </div>
       </div>
 
@@ -2371,6 +1511,8 @@ export default function SettingsPage() {
           </p>
         </div>
       </div>
+
+          {selectedCompany && <PeriodLockPanel companyId={selectedCompany.id} />}
         </div>
       )}
 
@@ -2696,105 +1838,9 @@ export default function SettingsPage() {
         </div>
       )}
 
-      {/* Layout Tab */}
-      {activeTab === 'layout' && (
+      {/* Attachments Tab */}
+      {activeTab === 'attachments' && (
         <div>
-          <div className="card mb-6">
-            <div className="flex items-center gap-2 mb-4">
-              <Layout className="w-5 h-5 text-gray-600" />
-              <h2 className="text-xl font-semibold">Utseende</h2>
-            </div>
-
-            {/* Split View Settings */}
-            <div className="mb-6">
-              <h3 className="text-lg font-medium text-gray-900 mb-2">Delad vy</h3>
-              <p className="text-gray-600 mb-4">
-                Välj på vilken sida bilagor ska visas när du använder delad vy i verifikationer och fakturor.
-              </p>
-
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 max-w-xl">
-                <label className={`flex flex-col p-4 border-2 rounded-lg cursor-pointer transition-colors ${
-                  layoutSettings.splitViewAttachmentSide === 'left'
-                    ? 'border-blue-500 bg-blue-50'
-                    : 'border-gray-200 hover:border-gray-300'
-                }`}>
-                  <div className="flex items-start">
-                    <input
-                      type="radio"
-                      name="splitViewAttachmentSide"
-                      value="left"
-                      checked={layoutSettings.splitViewAttachmentSide === 'left'}
-                      onChange={() => updateLayoutSettings({ splitViewAttachmentSide: 'left' })}
-                      className="mt-1 mr-3"
-                    />
-                    <div className="flex-1">
-                      <div className="font-medium text-gray-900">Bilagor till vänster</div>
-                      <div className="text-sm text-gray-600 mt-1">
-                        Bilagan visas på vänster sida, formuläret på höger
-                      </div>
-                    </div>
-                  </div>
-                  {/* Visual diagram */}
-                  <div className="mt-3 flex gap-1 h-12 rounded overflow-hidden border border-gray-300">
-                    <div className={`flex-1 flex items-center justify-center text-xs font-medium ${
-                      layoutSettings.splitViewAttachmentSide === 'left' ? 'bg-blue-200 text-blue-800' : 'bg-gray-200 text-gray-600'
-                    }`}>
-                      Bilaga
-                    </div>
-                    <div className={`flex-1 flex items-center justify-center text-xs font-medium ${
-                      layoutSettings.splitViewAttachmentSide === 'left' ? 'bg-blue-100 text-blue-700' : 'bg-gray-100 text-gray-500'
-                    }`}>
-                      Formulär
-                    </div>
-                  </div>
-                </label>
-
-                <label className={`flex flex-col p-4 border-2 rounded-lg cursor-pointer transition-colors ${
-                  layoutSettings.splitViewAttachmentSide === 'right'
-                    ? 'border-blue-500 bg-blue-50'
-                    : 'border-gray-200 hover:border-gray-300'
-                }`}>
-                  <div className="flex items-start">
-                    <input
-                      type="radio"
-                      name="splitViewAttachmentSide"
-                      value="right"
-                      checked={layoutSettings.splitViewAttachmentSide === 'right'}
-                      onChange={() => updateLayoutSettings({ splitViewAttachmentSide: 'right' })}
-                      className="mt-1 mr-3"
-                    />
-                    <div className="flex-1">
-                      <div className="font-medium text-gray-900">Bilagor till höger</div>
-                      <div className="text-sm text-gray-600 mt-1">
-                        Bilagan visas på höger sida, formuläret på vänster
-                      </div>
-                    </div>
-                  </div>
-                  {/* Visual diagram */}
-                  <div className="mt-3 flex gap-1 h-12 rounded overflow-hidden border border-gray-300">
-                    <div className={`flex-1 flex items-center justify-center text-xs font-medium ${
-                      layoutSettings.splitViewAttachmentSide === 'right' ? 'bg-blue-100 text-blue-700' : 'bg-gray-100 text-gray-500'
-                    }`}>
-                      Formulär
-                    </div>
-                    <div className={`flex-1 flex items-center justify-center text-xs font-medium ${
-                      layoutSettings.splitViewAttachmentSide === 'right' ? 'bg-blue-200 text-blue-800' : 'bg-gray-200 text-gray-600'
-                    }`}>
-                      Bilaga
-                    </div>
-                  </div>
-                </label>
-              </div>
-            </div>
-
-            <div className="bg-blue-50 border border-blue-200 rounded p-3">
-              <p className="text-sm text-blue-800">
-                <strong>Tips:</strong> Aktivera delad vy genom att klicka på pin-ikonen i verifikations- eller fakturaformuläret
-                när du har en bilaga vald.
-              </p>
-            </div>
-          </div>
-
           {/* Olänkade bilagor */}
           <div className="card">
             <div className="flex items-center gap-2 mb-4">
@@ -2876,232 +1922,6 @@ export default function SettingsPage() {
       )}
 
       {floatingPreview}
-
-      {/* Delete Backup Confirmation Modal */}
-      {backupToDelete && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-          <div className="bg-white rounded-lg shadow-xl max-w-md w-full mx-4 overflow-hidden">
-            <div className="bg-gradient-to-r from-red-500 to-red-600 px-6 py-4">
-              <div className="flex items-center gap-3">
-                <div className="bg-white bg-opacity-20 p-2 rounded-full">
-                  <Trash2 className="w-6 h-6 text-white" />
-                </div>
-                <h3 className="text-xl font-semibold text-white">Radera backup</h3>
-              </div>
-            </div>
-            <div className="px-6 py-5">
-              <p className="text-gray-700 mb-3">
-                Är du säker på att du vill radera följande backup?
-              </p>
-              <div className="bg-gray-50 border border-gray-200 rounded-lg p-4">
-                <p className="font-mono text-sm text-gray-900">{backupToDelete}</p>
-              </div>
-              <p className="text-sm text-red-600 mt-3">
-                Denna åtgärd kan inte ångras.
-              </p>
-            </div>
-            <div className="bg-gray-50 px-6 py-4 flex gap-3 justify-end">
-              <button
-                onClick={() => setBackupToDelete(null)}
-                disabled={!!deletingBackup}
-                className="px-4 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 transition-colors disabled:opacity-50"
-              >
-                Avbryt
-              </button>
-              <button
-                onClick={handleDeleteBackup}
-                disabled={!!deletingBackup}
-                className="px-4 py-2 text-sm font-medium text-white bg-red-600 border border-transparent rounded-lg hover:bg-red-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-red-500 transition-colors disabled:opacity-50 flex items-center gap-2"
-              >
-                {deletingBackup ? (
-                  <>
-                    <Loader2 className="w-4 h-4 animate-spin" />
-                    Raderar...
-                  </>
-                ) : (
-                  <>
-                    <Trash2 className="w-4 h-4" />
-                    Radera
-                  </>
-                )}
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* AI Settings Tab */}
-      {activeTab === 'ai' && user?.is_admin && (
-        <div>
-          {aiLoading ? (
-            <div className="flex items-center justify-center py-16">
-              <Loader2 className="w-6 h-6 animate-spin text-gray-400" />
-            </div>
-          ) : (
-            <>
-              {/* Toggle card */}
-              <div className={`rounded-xl border-2 p-5 mb-6 ${
-                aiForm.ai_enabled
-                  ? 'border-primary-200 bg-primary-50/50'
-                  : 'border-gray-200 bg-gray-50'
-              }`}>
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-3">
-                    <div className={`w-10 h-10 rounded-lg flex items-center justify-center ${
-                      aiForm.ai_enabled ? 'bg-primary-100' : 'bg-gray-200'
-                    }`}>
-                      <Bot className={`w-5 h-5 ${aiForm.ai_enabled ? 'text-primary-600' : 'text-gray-500'}`} />
-                    </div>
-                    <div>
-                      <h2 className="text-base font-semibold text-gray-900">
-                        AI-assistent {aiForm.ai_enabled ? 'aktiverad' : 'inaktiverad'}
-                      </h2>
-                      <p className="text-sm text-gray-500">
-                        {aiForm.ai_enabled
-                          ? 'Chattassistenten är synlig för alla användare i företaget'
-                          : 'Slå på för att göra chattassistenten tillgänglig'}
-                      </p>
-                    </div>
-                  </div>
-                  <button
-                    onClick={() => setAiForm({ ...aiForm, ai_enabled: !aiForm.ai_enabled })}
-                    className={`relative inline-flex h-7 w-12 items-center rounded-full transition-colors flex-shrink-0 ${
-                      aiForm.ai_enabled ? 'bg-primary-600' : 'bg-gray-300'
-                    }`}
-                  >
-                    <span
-                      className={`inline-block h-5 w-5 transform rounded-full bg-white shadow transition-transform ${
-                        aiForm.ai_enabled ? 'translate-x-6' : 'translate-x-1'
-                      }`}
-                    />
-                  </button>
-                </div>
-              </div>
-
-              {/* Connection settings */}
-              <div className="card mb-6">
-                <h3 className="text-sm font-semibold text-gray-700 mb-4 uppercase tracking-wide">Anslutning</h3>
-
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">Ollama-adress</label>
-                    <input
-                      type="text"
-                      value={aiForm.ollama_url}
-                      onChange={(e) => setAiForm({ ...aiForm, ollama_url: e.target.value })}
-                      className="input w-full"
-                      placeholder="http://host.docker.internal:11434"
-                    />
-                    <p className="text-xs text-gray-400 mt-1">
-                      URL:en till Ollama-servern som kör AI-modellen
-                    </p>
-                  </div>
-
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">Modell</label>
-                    {aiModels.length > 0 ? (
-                      <select
-                        value={aiForm.ollama_model}
-                        onChange={(e) => setAiForm({ ...aiForm, ollama_model: e.target.value })}
-                        className="input w-full"
-                      >
-                        <option value="">Välj modell...</option>
-                        {aiModels.map((model) => (
-                          <option key={model.name} value={model.name}>
-                            {model.name}
-                            {model.parameter_size ? ` — ${model.parameter_size}` : ''}
-                            {model.quantization_level ? ` (${model.quantization_level})` : ''}
-                          </option>
-                        ))}
-                      </select>
-                    ) : (
-                      <input
-                        type="text"
-                        value={aiForm.ollama_model}
-                        onChange={(e) => setAiForm({ ...aiForm, ollama_model: e.target.value })}
-                        className="input w-full"
-                        placeholder="llama3.1:8b"
-                      />
-                    )}
-                    <p className="text-xs text-gray-400 mt-1">
-                      {aiModels.length > 0
-                        ? 'Välj bland installerade modeller'
-                        : 'Ange modellnamn eller testa anslutningen för att se tillgängliga modeller'}
-                    </p>
-                  </div>
-                </div>
-
-                {/* Test connection button + result */}
-                <div className="flex items-center gap-3 pt-3 border-t border-gray-100">
-                  <button
-                    onClick={testAiConnection}
-                    disabled={aiTesting || !aiForm.ollama_url}
-                    className="btn btn-outline-primary flex items-center gap-2 text-sm"
-                  >
-                    {aiTesting ? <Loader2 className="w-4 h-4 animate-spin" /> : null}
-                    Testa anslutning
-                  </button>
-                  {aiHealth && !aiTesting && (
-                    <div className="flex items-center gap-2">
-                      <div className={`w-2 h-2 rounded-full flex-shrink-0 ${
-                        aiHealth.reachable
-                          ? aiHealth.model_available ? 'bg-green-500' : 'bg-yellow-500'
-                          : 'bg-red-500'
-                      }`} />
-                      <span className="text-sm text-gray-600">
-                        {aiHealth.reachable
-                          ? aiHealth.model_available
-                            ? `Redo — ${aiHealth.model_name} svarar`
-                            : `Ollama ansluten men modellen svarar inte${aiHealth.error ? ` (${aiHealth.error})` : ''}`
-                          : `Kan inte nå Ollama${aiHealth.error ? ` — ${aiHealth.error}` : ''}`
-                        }
-                      </span>
-                    </div>
-                  )}
-                </div>
-              </div>
-
-              {/* Behavior settings */}
-              <div className="card mb-6">
-                <h3 className="text-sm font-semibold text-gray-700 mb-4 uppercase tracking-wide">Beteende</h3>
-
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Extra instruktioner</label>
-                  <textarea
-                    value={aiForm.system_prompt}
-                    onChange={(e) => setAiForm({ ...aiForm, system_prompt: e.target.value })}
-                    className="input w-full min-h-[140px]"
-                    rows={6}
-                    placeholder={'Exempel:\n- Använd alltid konto 6212 för mobiltelefoni\n- Vår standard-momssats är 25%\n- Föreslå aldrig konto 2990'}
-                  />
-                  <p className="text-xs text-gray-400 mt-1">
-                    Egna regler som komplettar de inbyggda bokföringsinstruktionerna. Lämna tomt för standardbeteende.
-                  </p>
-                </div>
-              </div>
-
-              {/* Save */}
-              <div className="flex justify-end">
-                <button
-                  onClick={saveAiSettings}
-                  disabled={aiSaving}
-                  className="btn btn-primary flex items-center gap-2"
-                >
-                  {aiSaving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
-                  Spara inställningar
-                </button>
-              </div>
-            </>
-          )}
-        </div>
-      )}
-
-      {/* Restore Modal */}
-      <RestoreModal
-        isOpen={showRestoreModal}
-        onClose={() => setShowRestoreModal(false)}
-        backups={backups}
-      />
 
       {/* SIE4 Import Modal */}
       {selectedCompany && (

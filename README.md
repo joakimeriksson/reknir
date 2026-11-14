@@ -185,7 +185,7 @@ This software follows Swedish accounting standards:
 
 The system includes a complete backup and restore solution with both GUI and CLI support.
 
-### GUI (Settings → Backup)
+### GUI (Systeminställningar → Backup, admin)
 - Create backups with one click
 - Calendar-based backup selector for restore
 - Restore from server backups or upload a backup file
@@ -204,7 +204,7 @@ docker compose exec backend python -m app.cli backup restore <filename>
 ```
 
 ### Automatic Backups
-- Configurable scheduled backups via Settings GUI (interval and retention)
+- Configurable scheduled backups via Systeminställningar (interval and retention)
 - Backups stored in `backups/` directory as `.tar.gz` archives
 - Each archive contains SQL dump, uploaded files, and version metadata
 

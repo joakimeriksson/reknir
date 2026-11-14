@@ -265,7 +265,7 @@ instead of "forgot password" mails.
 
 ### Change your own name, e-mail or password
 
-**Inställningar → Mitt konto.** Changing the e-mail address or the password requires
+**Mitt konto** (click your name at the bottom of the menu). Changing the e-mail address or the password requires
 the current password (`PUT /api/auth/me` with `current_password`). Admin and active
 status cannot be changed there.
 

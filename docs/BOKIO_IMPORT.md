@@ -2,8 +2,8 @@
 
 `python -m app.cli bokio-import` turns the files Bokio produces under
 **Inställningar → Exportera data** into a Reknir company archive, which is then
-imported with `import-company` (or the **Importera företagsarkiv** button on
-the Settings page). Bokio's API is not needed; this works on the Basic plan.
+imported with `import-company` (or **Importera företagsarkiv** under
+**Systeminställningar → Företag**). Bokio's API is not needed; this works on the Basic plan.
 
 ## 1. Export from Bokio
 

@@ -331,7 +331,7 @@ Detta innebär att en mall skapad år 2024 automatiskt fungerar år 2025, förut
 - `PATCH /api/posting-templates/reorder` - Ändra sortering
 
 **Routes:**
-- `/settings` - Inställningar (fliken "Konteringsmallar")
+- `/settings` - Företagsinställningar (fliken "Konteringsmallar")
 
 ### 10b. Bokföringsregler (docs/COMPLIANCE.md)
 - Verifikationer ändras inte (PATCH 403 i produktion); rättelse via `POST /api/verifications/{id}/reverse` (`ledger_service.create_reversal`)
@@ -370,7 +370,8 @@ Detta innebär att en mall skapad år 2024 automatiskt fungerar år 2025, förut
 - `PUT /api/backup/schedule` - Uppdatera schema-inställningar
 
 **Routes:**
-- `/settings` - Inställningar (fliken "Import/Export")
+- `/system-settings` - Systeminställningar (fliken "Backup", admin); företagsimport under fliken "Företag"
+- `/settings` - Företagsinställningar (fliken "Import/Export": SIE4 och export av företagsarkiv)
 
 ### 12. Företagsinställningar
 - Företagsinformation med automatiskt VAT-nummer
@@ -402,7 +403,11 @@ Detta innebär att en mall skapad år 2024 automatiskt fungerar år 2025, förut
 - `POST /api/companies/{id}/seed-templates` - Importera standardmallar
 
 **Routes:**
-- `/settings` - Inställningar (flikbaserad vy)
+- `/settings` - Företagsinställningar för valt företag (flikar: Företag, Räkenskapsår med periodlåsning,
+  Konteringsmallar, Import/Export, Bilagor, Historik)
+- `/system-settings` - Systeminställningar, admin (flikar: Företag med nytt företag och import av
+  företagsarkiv, Backup, AI-assistent). `POST /api/companies/` kräver admin.
+- `/account` - Mitt konto (profil, lösenord, delad vy); nås via namnet längst ned i sidomenyn
 
 ### 13. AI-assistent
 Integrerad chattassistent som körs via Ollama (lokal LLM). AI:n interagerar med systemets REST-API via HTTP-anrop med användarens JWT-token.
@@ -440,7 +445,7 @@ Skrivverktyg öppnar befintliga formulär (InvoiceForm, VerificationForm, etc.) 
 - `GET/DELETE /api/ai/sessions` — Hantera chattsessioner
 
 **Routes:**
-- `/settings` — Inställningar (fliken "AI-assistent", admin)
+- `/system-settings` — Systeminställningar (fliken "AI-assistent", admin)
 
 ## Standardkonfigurationer
 
