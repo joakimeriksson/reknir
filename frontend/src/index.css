@@ -25,6 +25,18 @@
     @apply border border-red-300 text-red-700 hover:bg-red-50;
   }
 
+  .btn-danger {
+    @apply bg-red-600 text-white hover:bg-red-700;
+  }
+
+  .btn-outline-primary {
+    @apply border border-primary-300 text-primary-700 hover:bg-primary-50;
+  }
+
+  .btn-sm {
+    @apply px-3 py-1 text-sm;
+  }
+
   .card {
     @apply bg-white rounded-lg shadow p-6;
   }

@@ -115,7 +115,7 @@ export default function ProfilePanel() {
             <button
               type="submit"
               disabled={savingProfile || (!nameChanged && !emailChanged)}
-              className="btn-primary flex items-center gap-2 disabled:opacity-50"
+              className="btn btn-primary flex items-center gap-2 disabled:opacity-50"
             >
               <Save className="w-4 h-4" />
               {savingProfile ? 'Sparar...' : 'Spara'}
@@ -168,7 +168,7 @@ export default function ProfilePanel() {
           </div>
           <p className="text-xs text-gray-500">Minst 8 tecken. Glömt lösenordet? En administratör kan skapa en återställningslänk under Användare.</p>
           <div className="flex justify-end">
-            <button type="submit" disabled={savingPassword} className="btn-primary flex items-center gap-2 disabled:opacity-50">
+            <button type="submit" disabled={savingPassword} className="btn btn-primary flex items-center gap-2 disabled:opacity-50">
               <KeyRound className="w-4 h-4" />
               {savingPassword ? 'Byter...' : 'Byt lösenord'}
             </button>
