@@ -464,10 +464,11 @@ export default function RestoreModal({ isOpen, onClose, backups }: RestoreModalP
                     : 'border-gray-300 hover:border-blue-500 hover:bg-blue-50'
                 }`}
               >
+                {/* File pickers match on the last extension only, so ".tar.gz" never matches; handleFileSelect checks the full name */}
                 <input
                   ref={fileInputRef}
                   type="file"
-                  accept=".zip,.tar.gz"
+                  accept=".zip,.gz"
                   onChange={handleFileSelect}
                   className="hidden"
                 />
