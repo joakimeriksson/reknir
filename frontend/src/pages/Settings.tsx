@@ -1908,9 +1908,9 @@ export default function SettingsPage() {
               <h2 className="text-xl font-semibold">Systembackup</h2>
             </div>
             <p className="text-gray-600 mb-4">
-              Skapa fullständiga backups av hela systemet: alla företag, användare och inställningar som JSON,
-              samt alla bilagor, fakturor, kvitton och logotyper. Arkivet är fristående (zip med JSON, filer och
-              SIE4 per räkenskapsår) och kan återställas i en ny installation.
+              Skapa fullständiga backups av hela systemet: hela databasen med alla företag, användare och
+              inställningar, samt alla bilagor, fakturor, kvitton och logotyper. En backup kan återställas i samma
+              eller en senare version av Reknir; databasen uppgraderas automatiskt vid återställningen.
             </p>
 
             {/* Create Backup */}
@@ -2068,8 +2068,8 @@ export default function SettingsPage() {
                           </td>
                           <td className="px-3 py-2 text-sm text-gray-600">
                             {backup.app_version}
-                            {backup.format === 'sql' && (
-                              <span className="ml-1 text-xs text-amber-600" title="Äldre pg_dump-format">(SQL)</span>
+                            {backup.format === 'json' && (
+                              <span className="ml-1 text-xs text-amber-600" title="Portabelt JSON-arkiv">(JSON)</span>
                             )}
                           </td>
                           <td className="px-3 py-2 text-sm text-gray-600">{backup.schema_version}</td>
