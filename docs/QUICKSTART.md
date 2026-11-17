@@ -146,7 +146,7 @@ docker compose exec backend alembic upgrade head
 
 ## Backups
 
-Backups are managed via **Settings → Import/Export** in the GUI, or via CLI:
+Backups are managed via **Systeminställningar → Backup** in the GUI (admin), or via CLI:
 
 ```bash
 # Create backup

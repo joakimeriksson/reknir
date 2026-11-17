@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react'
 import { BrowserRouter as Router, Routes, Route, Link, useLocation } from 'react-router-dom'
-import { Home, FileText, PieChart, Settings, Receipt, BookOpen, Users, Wallet, LogOut, User, UserCog, Mail } from 'lucide-react'
+import { Home, FileText, PieChart, Settings, Settings2, Receipt, BookOpen, Users, Wallet, LogOut, User, UserCog, Mail } from 'lucide-react'
 import Dashboard from './pages/Dashboard'
 import Verifications from './pages/Verifications'
 import VerificationDetail from './pages/VerificationDetail'
@@ -14,6 +14,8 @@ import Reports from './pages/Reports'
 import Expenses from './pages/Expenses'
 import ExpenseDetail from './pages/ExpenseDetail'
 import SettingsPage from './pages/Settings'
+import SystemSettingsPage from './pages/SystemSettings'
+import AccountPage from './pages/Account'
 import UsersPage from './pages/Users'
 import InvitationsPage from './pages/Invitations'
 import InviteAccept from './pages/InviteAccept'
@@ -81,7 +83,7 @@ function AppContent() {
     { path: '/customers', icon: Users, label: 'Kunder' },
     { path: '/accounts', icon: BookOpen, label: 'Kontoplan' },
     { path: '/reports', icon: PieChart, label: 'Rapporter' },
-    { path: '/settings', icon: Settings, label: 'Inställningar' },
+    { path: '/settings', icon: Settings, label: 'Företagsinställningar' },
   ]
 
   const handleLogout = () => {
@@ -152,6 +154,17 @@ function AppContent() {
                 <Mail className={`w-5 h-5 mr-3 ${location.pathname.startsWith('/invitations') ? 'text-primary-600' : 'text-gray-500'}`} />
                 Inbjudningar
               </Link>
+              <Link
+                to="/system-settings"
+                className={`flex items-center px-4 py-3 rounded-lg text-sm font-medium transition-colors ${
+                  location.pathname.startsWith('/system-settings')
+                    ? 'bg-primary-50 text-primary-700'
+                    : 'text-gray-700 hover:bg-gray-100'
+                }`}
+              >
+                <Settings2 className={`w-5 h-5 mr-3 ${location.pathname.startsWith('/system-settings') ? 'text-primary-600' : 'text-gray-500'}`} />
+                Systeminställningar
+              </Link>
             </>
           )}
         </nav>
@@ -171,7 +184,13 @@ function AppContent() {
 
           {/* User info and logout button */}
           <div className="p-4 border-t border-gray-200">
-            <div className="flex items-center mb-3">
+            <Link
+              to="/account"
+              title="Mitt konto"
+              className={`flex items-center mb-3 -mx-2 px-2 py-1 rounded-lg transition-colors ${
+                location.pathname.startsWith('/account') ? 'bg-primary-50' : 'hover:bg-gray-100'
+              }`}
+            >
               <div className="flex-shrink-0">
                 <div className="w-8 h-8 rounded-full bg-blue-100 flex items-center justify-center">
                   <User className="w-5 h-5 text-blue-600" />
@@ -181,7 +200,7 @@ function AppContent() {
                 <p className="text-sm font-medium text-gray-900 truncate">{user?.full_name}</p>
                 <p className="text-xs text-gray-500 truncate">{user?.email}</p>
               </div>
-            </div>
+            </Link>
             <button
               onClick={handleLogout}
               className="w-full flex items-center justify-center px-4 py-2 text-sm font-medium text-gray-700 bg-gray-100 rounded-lg hover:bg-gray-200 transition-colors"
@@ -211,6 +230,8 @@ function AppContent() {
               <Route path="/accounts/:accountId/ledger" element={<AccountLedger />} />
               <Route path="/reports" element={<Reports />} />
               <Route path="/settings" element={<SettingsPage />} />
+              <Route path="/system-settings" element={<SystemSettingsPage />} />
+              <Route path="/account" element={<AccountPage />} />
               <Route path="/users" element={<UsersPage />} />
               <Route path="/invitations" element={<InvitationsPage />} />
             </Routes>

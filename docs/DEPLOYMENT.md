@@ -143,7 +143,7 @@ Visit your domain: `https://reknir.yourdomain.com`
 
 ### Setup Automated Backups
 
-Automatic backups are configured via **Settings → Systembackup → Automatisk backup**. Options include backup interval (6h to 14 days) and maximum number of backups to retain.
+Automatic backups are configured via **Systeminställningar → Backup → Automatisk backup**. Options include backup interval (6h to 14 days) and maximum number of backups to retain.
 
 A backup is a `reknir_backup_<timestamp>.tar.gz` in `./backups/`: a `pg_dump`
 of the whole database (all companies, users, settings, audit log), every stored
@@ -171,7 +171,7 @@ folders as `uploads/<name>_pre_restore` until the next restore.
 The backend image's `pg_dump`/`pg_restore` must be at least the major version
 of the PostgreSQL server (see `backend/Dockerfile`).
 
-Keep copies of `./backups/` off the server (download them from Settings or copy
+Keep copies of `./backups/` off the server (download them from Systeminställningar → Backup or copy
 them with `scp`/`rsync`); the backup directory itself is on the same disk as the
 data it protects.
 
@@ -181,7 +181,8 @@ data it protects.
 
 To move a single company to another Reknir instance, use
 `python -m app.cli export-company <id>` and `import-company <archive.zip>`, or
-the **Företagsarkiv** buttons on the Settings page.
+**Företagsinställningar → Import/Export** (export) and **Systeminställningar →
+Företag** (import).
 
 ### Monitoring
 
@@ -352,7 +353,7 @@ docker stats
 df -h
 du -sh ~/reknir/* | sort -h
 
-# Backup retention is managed via Settings GUI
+# Backup retention is managed via Systeminställningar → Backup
 
 # Clean docker
 docker system prune -a --volumes

@@ -1,7 +1,7 @@
 # Portable Archive — design
 
 Status: implemented (2026-09-23). Since November 2026 the system backup
-(Settings → Systembackup, the scheduler and `python -m app.cli backup`) is the
+(Systeminställningar → Backup, the scheduler and `python -m app.cli backup`) is the
 pg_dump backup again, as the table under "Why" recommends. The archive is written
 by `backup --json` and by the per-company export; both kinds can be restored.
 

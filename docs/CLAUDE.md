@@ -331,7 +331,7 @@ Detta innebär att en mall skapad år 2024 automatiskt fungerar år 2025, förut
 - `PATCH /api/posting-templates/reorder` - Ändra sortering
 
 **Routes:**
-- `/settings` - Inställningar (fliken "Konteringsmallar")
+- `/settings` - Företagsinställningar (fliken "Konteringsmallar")
 
 ### 10b. Bokföringsregler (docs/COMPLIANCE.md)
 - Verifikationer ändras inte (PATCH 403 i produktion); rättelse via `POST /api/verifications/{id}/reverse` (`ledger_service.create_reversal`)
@@ -376,7 +376,8 @@ Detta innebär att en mall skapad år 2024 automatiskt fungerar år 2025, förut
 - `PUT /api/backup/schedule` - Uppdatera schema-inställningar
 
 **Routes:**
-- `/settings` - Inställningar (fliken "Import/Export")
+- `/system-settings` - Systeminställningar (fliken "Backup", admin); företagsimport under fliken "Företag"
+- `/settings` - Företagsinställningar (fliken "Import/Export": SIE4 och export av företagsarkiv)
 
 ### 12. Företagsinställningar
 - Företagsinformation med automatiskt VAT-nummer
@@ -408,7 +409,11 @@ Detta innebär att en mall skapad år 2024 automatiskt fungerar år 2025, förut
 - `POST /api/companies/{id}/seed-templates` - Importera standardmallar
 
 **Routes:**
-- `/settings` - Inställningar (flikbaserad vy)
+- `/settings` - Företagsinställningar för valt företag (flikar: Företag, Räkenskapsår med periodlåsning,
+  Konteringsmallar, Import/Export, Bilagor, Historik)
+- `/system-settings` - Systeminställningar, admin (flikar: Företag med nytt företag och import av
+  företagsarkiv, Backup, AI-assistent). `POST /api/companies/` kräver admin.
+- `/account` - Mitt konto (profil, lösenord, delad vy); nås via namnet längst ned i sidomenyn
 
 ### 13. AI-assistent
 Integrerad chattassistent som körs via Ollama (lokal LLM). AI:n interagerar med systemets REST-API via HTTP-anrop med användarens JWT-token.
@@ -446,7 +451,7 @@ Skrivverktyg öppnar befintliga formulär (InvoiceForm, VerificationForm, etc.) 
 - `GET/DELETE /api/ai/sessions` — Hantera chattsessioner
 
 **Routes:**
-- `/settings` — Inställningar (fliken "AI-assistent", admin)
+- `/system-settings` — Systeminställningar (fliken "AI-assistent", admin)
 
 ## Standardkonfigurationer
 
@@ -737,10 +742,30 @@ BSD 3-Clause License - Se LICENSE-filen i projektets rot.
 
 ---
 
-**Version:** 1.3.4
-**Senast uppdaterad:** 2026-04-14
+**Version:** 1.3.5
+**Senast uppdaterad:** 2026-11-17
 
 ## Ändringslogg
+
+### v1.3.5 (2026-11-17)
+- ✅ Inställningarna uppdelade i tre
+  - Företagsinställningar: företag, räkenskapsår med periodlåsning, konteringsmallar, import/export, bilagor, historik
+  - Systeminställningar (admin): alla företag, nytt företag, import av företagsarkiv, backup, AI-assistent
+  - Mitt konto: profil, lösenord och delad vy, via namnet längst ned i sidomenyn
+  - Endast administratörer kan skapa företag (`POST /api/companies/`)
+- ✅ Enhetlig knappstil på alla sidor
+- Ändringar sedan v1.3.4:
+  - ✅ Systembackup med pg_dump av hela databasen och alla uppladdade filer, med checksummor; en äldre backup lyfts med migreringarna vid återställning
+  - ✅ Portabelt arkiv (JSON + filer) för export/import av enskilda företag och för hela systemet med `backup --json`
+  - ✅ Momsdeklarationen: alla rutor i SKV 4700 från BAS-konton
+  - ✅ Bokio-import till företagsarkiv
+  - ✅ Tjänstekonton för API-åtkomst
+  - ✅ Bokföringsregler: rättelseverifikationer, numrering per räkenskapsår, periodlåsning, luckor och behandlingshistorik, även i arkivet
+  - ✅ Deadlinekalender på översikten: moms, INK2, årsredovisning och årsstämma
+  - ✅ Självbetjäning för konto och lösenordsåterställning utan e-post
+  - ✅ Konfigurerbara portar och compose-inställningar via `.env`, fixar för produktionsdrift
+  - ✅ AI-assistenten: PDF-till-bild för visionsmodeller
+  - ✅ Fix: momsredovisningsverifikationer i momsrapporten, XML-export av momsdeklarationen, radering av företag, Alembic med tom databas-URL
 
 ### v1.3.4 (2026-04-14)
 - ✅ AI-assistent med Ollama-integration

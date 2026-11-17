@@ -8,13 +8,13 @@ from sqlalchemy import desc
 from sqlalchemy.orm import Session
 
 from app.database import get_db
-from app.dependencies import get_current_active_user, get_user_company_ids, verify_company_access
+from app.dependencies import get_current_active_user, get_user_company_ids, require_admin, verify_company_access
 from app.models.account import Account
 from app.models.company import Company, PaymentType
 from app.models.compliance import PeriodLock
 from app.models.default_account import DefaultAccount
 from app.models.fiscal_year import FiscalYear
-from app.models.user import CompanyUser, User
+from app.models.user import User
 from app.models.verification import Verification
 from app.schemas.company import CompanyCreate, CompanyResponse, CompanyUpdate
 from app.schemas.compliance import PeriodLockCreate, PeriodLockResponse, PeriodLockStatus
@@ -27,10 +27,10 @@ router = APIRouter()
 @router.post("/", response_model=CompanyResponse, status_code=status.HTTP_201_CREATED)
 def create_company(
     company: CompanyCreate,
-    current_user: User = Depends(get_current_active_user),
+    current_user: User = Depends(require_admin),
     db: Session = Depends(get_db),
 ):
-    """Create a new company"""
+    """Create a new company. Admin only; admins then grant other users access."""
 
     # Check if org_number already exists
     existing = db.query(Company).filter(Company.org_number == company.org_number).first()
@@ -64,18 +64,6 @@ def create_company(
     db.add(db_company)
     db.commit()
     db.refresh(db_company)
-
-    # Auto-grant access to creator (if not admin)
-    # Admins have access to all companies by default, but we can still add them for explicit tracking
-    if not current_user.is_admin:
-        company_user = CompanyUser(
-            company_id=db_company.id,
-            user_id=current_user.id,
-            role="accountant",
-            created_by=current_user.id,
-        )
-        db.add(company_user)
-        db.commit()
 
     return db_company
 
