@@ -681,51 +681,17 @@ export default function Reports() {
 
           {vatReport && (
             <>
-          {/* Debug Info */}
           {vatReport.debug_info && (
-            <div className="mb-6 p-4 bg-yellow-50 border border-yellow-200 rounded">
-              <h4 className="text-sm font-semibold text-yellow-900 mb-2">Debug-information:</h4>
-              <div className="text-sm text-yellow-800 space-y-2">
-                <p>Hittade {vatReport.debug_info.total_vat_accounts_found} momskonton totalt</p>
-                <p>Utgående momskonton ({vatReport.debug_info.outgoing_vat_accounts.length}):
-                  {vatReport.debug_info.outgoing_vat_accounts.length > 0
-                    ? vatReport.debug_info.outgoing_vat_accounts.map(a => ` ${a.number}`).join(',')
-                    : ' Inga'}
-                </p>
-                <p>Ingående momskonton ({vatReport.debug_info.incoming_vat_accounts.length}):
-                  {vatReport.debug_info.incoming_vat_accounts.length > 0
-                    ? vatReport.debug_info.incoming_vat_accounts.map(a => ` ${a.number}`).join(',')
-                    : ' Inga'}
-                </p>
-                <p>Transaktionsgrupper funna: {vatReport.debug_info.transaction_groups_found}</p>
-
-                {vatReport.debug_info.accounts_with_transactions && vatReport.debug_info.accounts_with_transactions.length > 0 && (
-                  <div className="mt-3 pt-3 border-t border-yellow-300">
-                    <p className="font-semibold mb-2">⚠️ Konton som HAR transaktioner men INTE räknas som moms:</p>
-                    <ul className="list-disc list-inside space-y-1 ml-2">
-                      {vatReport.debug_info.accounts_with_transactions.map((acc, idx) => (
-                        <li key={idx}>
-                          <strong>{acc.number}</strong> - {acc.name}
-                          <span className="ml-2 text-xs">
-                            (Debet: {formatCurrency(acc.debit)}, Kredit: {formatCurrency(acc.credit)})
-                          </span>
-                        </li>
-                      ))}
-                    </ul>
-                  </div>
-                )}
-
-                {vatReport.debug_info.verifications && vatReport.debug_info.verifications.length > 0 && (
-                  <div className="mt-3 pt-3 border-t border-yellow-300">
-                    <button
-                      onClick={() => setShowVerificationsModal(true)}
-                      className="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700 transition-colors"
-                    >
-                      Visa alla {vatReport.debug_info.verifications.length} verifikationer med moms
-                    </button>
-                  </div>
-                )}
-              </div>
+            <div className="mb-6 flex flex-wrap items-center gap-x-4 gap-y-1 text-sm text-gray-600">
+              <span>{vatReport.debug_info.verifications.length} verifikationer med moms i perioden</span>
+              {vatReport.debug_info.excluded_settlement_verifications > 0 && (
+                <span>· {vatReport.debug_info.excluded_settlement_verifications} momsavräkningar exkluderade</span>
+              )}
+              {vatReport.debug_info.verifications.length > 0 && (
+                <button onClick={() => setShowVerificationsModal(true)} className="text-blue-600 hover:text-blue-800 underline">
+                  Visa verifikationerna
+                </button>
+              )}
             </div>
           )}
 
@@ -809,135 +775,73 @@ export default function Reports() {
             </div>
           </div>
 
-          {/* SKV 3800 Declaration Form */}
-          {vatReport.skv_3800 && (
+          {/* Momsdeklaration SKV 4700 */}
+          {vatReport.declaration && (
             <div className="mt-8 p-6 bg-green-50 border-2 border-green-300 rounded-lg">
-              <h3 className="text-xl font-bold text-green-900 mb-4">
-                📋 Momsdeklaration SKV 3800 - Rutor att fylla i
+              <h3 className="text-xl font-bold text-green-900 mb-1">
+                Momsdeklaration ({vatReport.declaration.form})
               </h3>
               <p className="text-sm text-green-800 mb-4">
-                Använd dessa siffror när du fyller i din momsdeklaration på Skatteverket.se
+                Rutorna nedan är beräknade från kontona i bokföringen (BAS). Beloppen i hela kronor är de som ska in
+                på Skatteverket.se eller som finns i XML-filen; öretal faller bort och ruta 49 är summan av de
+                avrundade momsrutorna.
               </p>
 
-              <div className="space-y-4">
-                {/* 25% VAT */}
-                {vatReport.skv_3800.outgoing_25.vat > 0 && (
-                  <div className="bg-white p-4 rounded border border-green-200">
-                    <h4 className="font-semibold text-gray-900 mb-2">Moms 25%</h4>
-                    <div className="grid grid-cols-2 gap-4">
-                      <div>
-                        <span className="text-sm text-gray-600">
-                          Ruta {vatReport.skv_3800.outgoing_25.box_sales}: Försäljning 25%
-                        </span>
-                        <p className="text-lg font-mono font-bold">
-                          {formatCurrency(vatReport.skv_3800.outgoing_25.sales)}
-                        </p>
-                      </div>
-                      <div>
-                        <span className="text-sm text-gray-600">
-                          Ruta {vatReport.skv_3800.outgoing_25.box_vat}: Utgående moms 25%
-                        </span>
-                        <p className="text-lg font-mono font-bold text-green-700">
-                          {formatCurrency(vatReport.skv_3800.outgoing_25.vat)}
-                        </p>
-                      </div>
-                    </div>
-                  </div>
-                )}
-
-                {/* 12% VAT */}
-                {vatReport.skv_3800.outgoing_12.vat > 0 && (
-                  <div className="bg-white p-4 rounded border border-green-200">
-                    <h4 className="font-semibold text-gray-900 mb-2">Moms 12%</h4>
-                    <div className="grid grid-cols-2 gap-4">
-                      <div>
-                        <span className="text-sm text-gray-600">
-                          Ruta {vatReport.skv_3800.outgoing_12.box_sales}: Försäljning 12%
-                        </span>
-                        <p className="text-lg font-mono font-bold">
-                          {formatCurrency(vatReport.skv_3800.outgoing_12.sales)}
-                        </p>
-                      </div>
-                      <div>
-                        <span className="text-sm text-gray-600">
-                          Ruta {vatReport.skv_3800.outgoing_12.box_vat}: Utgående moms 12%
-                        </span>
-                        <p className="text-lg font-mono font-bold text-green-700">
-                          {formatCurrency(vatReport.skv_3800.outgoing_12.vat)}
-                        </p>
-                      </div>
-                    </div>
-                  </div>
-                )}
-
-                {/* 6% VAT */}
-                {vatReport.skv_3800.outgoing_6.vat > 0 && (
-                  <div className="bg-white p-4 rounded border border-green-200">
-                    <h4 className="font-semibold text-gray-900 mb-2">Moms 6%</h4>
-                    <div className="grid grid-cols-2 gap-4">
-                      <div>
-                        <span className="text-sm text-gray-600">
-                          Ruta {vatReport.skv_3800.outgoing_6.box_sales}: Försäljning 6%
-                        </span>
-                        <p className="text-lg font-mono font-bold">
-                          {formatCurrency(vatReport.skv_3800.outgoing_6.sales)}
-                        </p>
-                      </div>
-                      <div>
-                        <span className="text-sm text-gray-600">
-                          Ruta {vatReport.skv_3800.outgoing_6.box_vat}: Utgående moms 6%
-                        </span>
-                        <p className="text-lg font-mono font-bold text-green-700">
-                          {formatCurrency(vatReport.skv_3800.outgoing_6.vat)}
-                        </p>
-                      </div>
-                    </div>
-                  </div>
-                )}
-
-                {/* Incoming VAT */}
-                <div className="bg-white p-4 rounded border border-green-200">
-                  <h4 className="font-semibold text-gray-900 mb-2">Ingående moms</h4>
-                  <div>
-                    <span className="text-sm text-gray-600">
-                      Ruta {vatReport.skv_3800.incoming_total.box}: Ingående moms
-                    </span>
-                    <p className="text-lg font-mono font-bold text-blue-700">
-                      {formatCurrency(vatReport.skv_3800.incoming_total.vat)}
-                    </p>
-                  </div>
+              {vatReport.declaration.warnings.length > 0 && (
+                <div className="mb-4 p-3 bg-amber-50 border border-amber-300 rounded text-sm text-amber-900 space-y-1">
+                  <p className="font-semibold">Kontrollera innan du deklarerar:</p>
+                  {vatReport.declaration.warnings.map((w, i) => (
+                    <p key={i}>• {w}</p>
+                  ))}
                 </div>
+              )}
 
-                {/* Net VAT */}
-                <div className="bg-white p-4 rounded border-2 border-gray-900">
-                  <h4 className="font-semibold text-gray-900 mb-2">Att betala/få tillbaka</h4>
-                  <div>
-                    <span className="text-sm text-gray-600">
-                      Ruta {vatReport.skv_3800.net_vat.box}: Moms att betala (eller återfå med minus)
-                    </span>
-                    <p className={`text-xl font-mono font-bold ${
-                      vatReport.skv_3800.net_vat.amount > 0 ? 'text-red-700' : 'text-green-700'
-                    }`}>
-                      {formatCurrency(vatReport.skv_3800.net_vat.amount)}
-                    </p>
-                  </div>
+              <table className="min-w-full bg-white rounded border border-green-200">
+                <thead>
+                  <tr className="text-xs uppercase text-gray-500 border-b border-green-200">
+                    <th className="px-3 py-2 text-left w-16">Ruta</th>
+                    <th className="px-3 py-2 text-left">Benämning</th>
+                    <th className="px-3 py-2 text-left">Konton</th>
+                    <th className="px-3 py-2 text-right">Bokfört</th>
+                    <th className="px-3 py-2 text-right">Hela kronor</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-gray-100">
+                  {vatReport.declaration.boxes.map((row) => (
+                    <tr key={row.box} className={row.box === '49' ? 'font-bold border-t-2 border-gray-900' : ''}>
+                      <td className="px-3 py-2 font-mono">{row.box}</td>
+                      <td className="px-3 py-2 text-sm">{row.label}</td>
+                      <td className="px-3 py-2 text-xs font-mono text-gray-500">
+                        {row.accounts.map((a) => a.account_number).join(', ')}
+                      </td>
+                      <td className="px-3 py-2 text-right font-mono text-sm text-gray-600">{formatCurrency(row.amount)}</td>
+                      <td
+                        className={`px-3 py-2 text-right font-mono ${
+                          row.box === '49' ? (row.whole > 0 ? 'text-red-700' : 'text-green-700') : ''
+                        }`}
+                      >
+                        {row.whole.toLocaleString('sv-SE')}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+              <p className="mt-2 text-xs text-gray-600">
+                Ruta 49: positivt belopp betalas till Skatteverket, negativt får du tillbaka.
+              </p>
+
+              {vatReport.declaration.unmapped_accounts.length > 0 && (
+                <div className="mt-4 p-3 bg-white border border-green-200 rounded text-sm">
+                  <p className="font-semibold text-gray-900 mb-1">Konton utanför deklarationen</p>
+                  <ul className="text-gray-700 space-y-0.5">
+                    {vatReport.declaration.unmapped_accounts.map((a) => (
+                      <li key={a.account_number} className="font-mono text-xs">
+                        {a.account_number} {a.name}: {formatCurrency(a.amount)}
+                      </li>
+                    ))}
+                  </ul>
                 </div>
-              </div>
-
-              <div className="mt-4 p-3 bg-yellow-50 border border-yellow-300 rounded">
-                <p className="text-sm text-yellow-900">
-                  <strong>💡 Tips:</strong> Gå till{' '}
-                  <a
-                    href="https://www.skatteverket.se"
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="underline font-semibold"
-                  >
-                    Skatteverket.se
-                  </a>{' '}
-                  → Mina sidor → Momsdeklaration och fyll i rutorna ovan.
-                </p>
-              </div>
+              )}
 
               {/* Download XML button */}
               <div className="mt-4">
@@ -961,8 +865,10 @@ export default function Reports() {
           <div className="mt-6 p-4 bg-blue-50 border border-blue-200 rounded">
             <h4 className="text-sm font-semibold text-blue-900 mb-2">Om momsrapporten</h4>
             <ul className="text-sm text-blue-800 space-y-1">
-              <li>• Utgående moms kommer från försäljningsfakturor (konto 2610-2619)</li>
-              <li>• Ingående moms kommer från inköpsfakturor (konto 2640-2649)</li>
+              <li>• Utgående moms: 2610–2619 (25 %), 2620–2629 (12 %), 2630–2639 (6 %); omvänd skattskyldighet 2614/2624/2634, import 2615/2625/2635</li>
+              <li>• Ingående moms: 2640–2649</li>
+              <li>• Försäljning (ruta 05) från 3000–3799; momsfri 3004/3054 m.fl. till ruta 42, EU och export till ruta 35–40</li>
+              <li>• Inköp med omvänd skattskyldighet: 4515–4517 (ruta 20), 4535–4537 (21), 4531–4533 (22), 4415–4417 (23), 4425–4427 (24), import 4545–4547 (50)</li>
               <li>
                 • Nettomoms = Utgående moms - Ingående moms (positivt värde = betala, negativt =
                 återfå)
