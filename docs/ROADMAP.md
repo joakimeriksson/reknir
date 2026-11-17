@@ -437,6 +437,6 @@
 
 ---
 
-**Senast uppdaterad:** 2026-11-14
+**Senast uppdaterad:** 2026-11-17
 **Version:** 1.3.5
 **Status:** Funktionell MVP - lämplig för testning och utveckling, ej för produktionsdrift ännu

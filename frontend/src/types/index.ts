@@ -612,45 +612,23 @@ export interface VATReport {
   }
   net_vat: number
   pay_or_refund: 'pay' | 'refund' | 'zero'
-  skv_3800?: {
-    outgoing_25: {
-      vat: number
-      sales: number
-      box_sales: string
-      box_vat: string
-    }
-    outgoing_12: {
-      vat: number
-      sales: number
-      box_sales: string
-      box_vat: string
-    }
-    outgoing_6: {
-      vat: number
-      sales: number
-      box_sales: string
-      box_vat: string
-    }
-    incoming_total: {
-      vat: number
+  declaration: {
+    form: string
+    boxes: Array<{
       box: string
-    }
-    net_vat: {
+      element: string
+      label: string
+      kind: 'sales' | 'purchases' | 'output_vat' | 'input_vat' | 'net'
       amount: number
-      box: string
-    }
+      whole: number
+      accounts: Array<{ account_number: number; name: string; amount: number }>
+    }>
+    net_whole: number
+    warnings: string[]
+    unmapped_accounts: Array<{ account_number: number; name: string; amount: number }>
   }
   debug_info?: {
-    total_vat_accounts_found: number
-    outgoing_vat_accounts: Array<{ number: number; name: string }>
-    incoming_vat_accounts: Array<{ number: number; name: string }>
-    transaction_groups_found: number
-    accounts_with_transactions: Array<{
-      number: number
-      name: string
-      debit: number
-      credit: number
-    }>
+    excluded_settlement_verifications: number
     verifications: Array<{
       id: number
       verification_number: number

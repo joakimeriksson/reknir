@@ -1,21 +1,21 @@
 """Backup service for creating and listing full system backups.
 
-The backup format is the portable JSON + files archive (``reknir_backup_*.zip``,
-see ``archive_export_service`` and docs/PORTABLE_ARCHIVE.md): every table as
-JSON, every stored file (attachments, logos, AI uploads), SIE4 per fiscal year,
-a manifest with SHA-256 for each member, and the JSON Schema of the format.
-It needs no PostgreSQL tooling to read and restores into any Reknir version
-that understands its ``format_version``.
+A system backup (``reknir_backup_*.tar.gz``) is a pg_dump of the whole database
+plus every uploads sub-directory (attachments, logos, AI uploads) and a manifest
+with the Alembic revision and the size and SHA-256 of every member. A restore
+loads the dump as it was and then runs the migrations on it, so a backup from an
+older Reknir restores into any newer one, and tables added later are included
+without changes here.
 
-``create_sql_backup`` still produces the older ``reknir_backup_*.tar.gz``
-(pg_dump + attachments) for anyone who wants a byte-exact database copy, and
-``restore_service`` can restore both kinds.
+``create_json_backup`` produces the portable JSON + files archive
+(``reknir_backup_*.zip``, see docs/PORTABLE_ARCHIVE.md) for moving or archiving
+data outside Reknir; ``restore_service`` restores both kinds.
 """
 
+import hashlib
 import json
 import logging
 import os
-import shutil
 import subprocess
 import tarfile
 import tempfile
@@ -27,12 +27,17 @@ from app import __version__
 from app.config import settings
 from app.schema_version import get_applied_schema_version
 from app.services import archive_export_service, archive_import_service
-from app.services.storage import ATTACHMENTS_DIR
+from app.services.storage import STORAGE_SUBDIRS, UPLOADS_DIR
 
 logger = logging.getLogger(__name__)
 
 BACKUP_DIR = Path(settings.backup_dir)
 BACKUP_PATTERNS = ("reknir_backup_*.zip", "reknir_backup_*.tar.gz")
+
+# 1: backup/files holds the attachments only. 2: backup/uploads/<sub> for every
+# storage sub-directory, and manifest["files"] lists every member with its checksum.
+SQL_BACKUP_LAYOUT = 2
+MANIFEST_MEMBER = "backup/manifest.json"
 
 
 def is_backup_filename(filename: str) -> bool:
@@ -61,7 +66,154 @@ def _parse_database_url(url: str) -> dict:
     }
 
 
-def create_backup(include_ai: bool = True) -> Path:
+def _sha256_stream(f) -> str:
+    digest = hashlib.sha256()
+    for chunk in iter(lambda: f.read(1024 * 1024), b""):
+        digest.update(chunk)
+    return digest.hexdigest()
+
+
+def _sha256_file(path: Path) -> str:
+    with open(path, "rb") as f:
+        return _sha256_stream(f)
+
+
+def _upload_members() -> list[tuple[str, Path]]:
+    """Every stored file as (path inside backup/, path on disk), in a stable order."""
+    members = []
+    for sub in STORAGE_SUBDIRS:
+        root = UPLOADS_DIR / sub
+        if not root.is_dir():
+            continue
+        for path in sorted(p for p in root.rglob("*") if p.is_file()):
+            members.append((f"uploads/{sub}/{path.relative_to(root).as_posix()}", path))
+    return members
+
+
+def _pg_dump(dump_path: Path) -> None:
+    db_info = _parse_database_url(settings.database_url)
+    result = subprocess.run(
+        [
+            "pg_dump",
+            "-h",
+            db_info["host"],
+            "-p",
+            db_info["port"],
+            "-U",
+            db_info["user"],
+            "-Fc",
+            "-f",
+            str(dump_path),
+            db_info["dbname"],
+        ],
+        env={**os.environ, "PGPASSWORD": db_info["password"]},
+        capture_output=True,
+        text=True,
+        timeout=600,
+    )
+    if result.returncode != 0:
+        raise RuntimeError(f"pg_dump failed: {result.stderr}")
+
+
+def create_backup() -> Path:
+    """Create a full system backup: pg_dump + every uploaded file, as a tar.gz.
+
+    Only the files listed in the manifest are archived, so a file uploaded while
+    the backup runs is either fully included or not at all.
+
+    Returns:
+        Path to the created backup archive.
+
+    Raises:
+        RuntimeError: If pg_dump fails.
+    """
+    now = datetime.now(UTC)
+    BACKUP_DIR.mkdir(parents=True, exist_ok=True)
+    archive_path = BACKUP_DIR / f"reknir_backup_{now.strftime('%Y-%m-%d_%H.%M.%S')}.tar.gz"
+    partial_path = archive_path.with_name(archive_path.name + ".partial")
+
+    with tempfile.TemporaryDirectory(prefix="reknir_backup_") as tmp_dir:
+        dump_path = Path(tmp_dir) / "database_dump"
+        _pg_dump(dump_path)
+
+        members = [("database_dump", dump_path), *_upload_members()]
+        manifest = {
+            "created_at": now.isoformat(),
+            "app_version": __version__,
+            "schema_version": get_applied_schema_version(),
+            "layout": SQL_BACKUP_LAYOUT,
+            "files": [
+                {"path": name, "bytes": path.stat().st_size, "sha256": _sha256_file(path)} for name, path in members
+            ],
+        }
+        manifest_path = Path(tmp_dir) / "manifest.json"
+        manifest_path.write_text(json.dumps(manifest, indent=2))
+
+        try:
+            # The manifest goes first so that listing backups never has to read past it
+            with tarfile.open(partial_path, "w:gz") as tar:
+                tar.add(str(manifest_path), arcname=MANIFEST_MEMBER)
+                for name, path in members:
+                    tar.add(str(path), arcname=f"backup/{name}")
+        except Exception:
+            partial_path.unlink(missing_ok=True)
+            raise
+
+    partial_path.replace(archive_path)
+    logger.info(f"Backup created: {archive_path}")
+    return archive_path
+
+
+def read_sql_manifest(archive_path: Path) -> dict:
+    """Read manifest.json from a tar.gz backup without decompressing the rest."""
+    with tarfile.open(archive_path, "r:gz") as tar:
+        for member in tar:
+            if member.name == MANIFEST_MEMBER:
+                f = tar.extractfile(member)
+                if f is None:
+                    break
+                return json.loads(f.read())
+    raise RuntimeError(f"{archive_path.name} has no readable {MANIFEST_MEMBER}")
+
+
+def verify_sql_backup(archive_path: Path) -> dict:
+    """Check every member of a tar.gz backup against the manifest checksums.
+
+    Backups from before the checksums were added (layout 1) are only checked for
+    a readable manifest.
+
+    Returns:
+        The manifest.
+
+    Raises:
+        RuntimeError: On a missing, altered or unlisted member.
+    """
+    manifest = read_sql_manifest(archive_path)
+    if manifest.get("layout", 1) < 2:
+        return manifest
+
+    expected = {f"backup/{entry['path']}": entry for entry in manifest["files"]}
+    seen = set()
+    with tarfile.open(archive_path, "r:gz") as tar:
+        for member in tar:
+            if member.name == MANIFEST_MEMBER or member.isdir():
+                continue
+            if not member.isfile():
+                raise RuntimeError(f"{member.name} is not a regular file")
+            entry = expected.get(member.name)
+            if entry is None:
+                raise RuntimeError(f"{member.name} is not listed in the manifest")
+            if member.size != entry["bytes"] or _sha256_stream(tar.extractfile(member)) != entry["sha256"]:
+                raise RuntimeError(f"{member.name} does not match its checksum")
+            seen.add(member.name)
+
+    missing = sorted(set(expected) - seen)
+    if missing:
+        raise RuntimeError(f"Backup is missing {len(missing)} file(s), e.g. {missing[0]}")
+    return manifest
+
+
+def create_json_backup(include_ai: bool = True) -> Path:
     """Create a full backup as a portable JSON + files archive (.zip).
 
     Returns:
@@ -89,80 +241,6 @@ def create_backup(include_ai: bool = True) -> Path:
         logger.warning(f"Backup created with {len(manifest.warnings)} warning(s): {archive_path}")
     logger.info(f"Backup created: {archive_path}")
     return archive_path
-
-
-def create_sql_backup() -> Path:
-    """Create a legacy backup package as a tar.gz archive (pg_dump + attachments).
-
-    Returns:
-        Path to the created backup archive.
-
-    Raises:
-        RuntimeError: If pg_dump fails or archive creation fails.
-    """
-    now = datetime.now(UTC)
-    timestamp_label = now.strftime("%Y-%m-%d_%H.%M.%S")
-    timestamp = now.isoformat()
-
-    with tempfile.TemporaryDirectory(prefix="reknir_backup_") as tmp_dir:
-        tmp_path = Path(tmp_dir)
-
-        # 1. Create manifest.json
-        manifest = {
-            "created_at": timestamp,
-            "app_version": __version__,
-            "schema_version": get_applied_schema_version(),
-        }
-        manifest_path = tmp_path / "manifest.json"
-        manifest_path.write_text(json.dumps(manifest, indent=2))
-
-        # 2. Run pg_dump (custom format for pg_restore compatibility)
-        db_info = _parse_database_url(settings.database_url)
-        dump_path = tmp_path / "database_dump"
-        env = {**os.environ, "PGPASSWORD": db_info["password"]}
-
-        result = subprocess.run(
-            [
-                "pg_dump",
-                "-h",
-                db_info["host"],
-                "-p",
-                db_info["port"],
-                "-U",
-                db_info["user"],
-                "-Fc",
-                "-f",
-                str(dump_path),
-                db_info["dbname"],
-            ],
-            env=env,
-            capture_output=True,
-            text=True,
-            timeout=600,
-        )
-
-        if result.returncode != 0:
-            raise RuntimeError(f"pg_dump failed: {result.stderr}")
-
-        # 3. Copy attachment files
-        files_dir = tmp_path / "files"
-        if ATTACHMENTS_DIR.exists() and any(ATTACHMENTS_DIR.iterdir()):
-            shutil.copytree(ATTACHMENTS_DIR, files_dir)
-        else:
-            files_dir.mkdir()
-
-        # 4. Create tar.gz archive
-        BACKUP_DIR.mkdir(parents=True, exist_ok=True)
-        archive_name = f"reknir_backup_{timestamp_label}.tar.gz"
-        archive_path = BACKUP_DIR / archive_name
-
-        with tarfile.open(archive_path, "w:gz") as tar:
-            tar.add(str(manifest_path), arcname="backup/manifest.json")
-            tar.add(str(dump_path), arcname="backup/database_dump")
-            tar.add(str(files_dir), arcname="backup/files")
-
-        logger.info(f"Backup created: {archive_path}")
-        return archive_path
 
 
 def enforce_retention(max_backups: int) -> int:
@@ -216,11 +294,8 @@ def describe_backup(archive_path: Path) -> dict:
             "warnings": manifest.warnings,
         }
     else:
-        with tarfile.open(archive_path, "r:gz") as tar:
-            f = tar.extractfile(tar.getmember("backup/manifest.json"))
-            if f is None:
-                raise RuntimeError("manifest not readable")
-            info = json.loads(f.read())
+        info = read_sql_manifest(archive_path)
+        info.pop("files", None)
         info["format"] = "sql"
     info["filename"] = archive_path.name
     info["size_bytes"] = archive_path.stat().st_size
