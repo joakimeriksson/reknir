@@ -1,4 +1,3 @@
-import xml.etree.ElementTree as ET
 from datetime import date, datetime, timedelta
 from decimal import Decimal
 
@@ -13,6 +12,7 @@ from app.models.company import Company, VATReportingPeriod
 from app.models.fiscal_year import FiscalYear
 from app.models.user import User
 from app.models.verification import TransactionLine, Verification
+from app.services import vat_report_service
 from app.services.report_pdf_service import (
     generate_balance_sheet_pdf,
     generate_general_ledger_pdf,
@@ -22,8 +22,8 @@ from app.services.report_pdf_service import (
 router = APIRouter()
 
 
-# Accounts that only appear when VAT is settled against Skatteverket (see get_vat_report)
-SETTLEMENT_ACCOUNTS = [1630, 1650, 2650, 2660]
+# Re-exported for callers that import it from here
+SETTLEMENT_ACCOUNTS = vat_report_service.SETTLEMENT_ACCOUNTS
 
 
 def get_fiscal_year_dates(db: Session, company_id: int, fiscal_year_id: int) -> tuple[date, date]:
@@ -530,319 +530,75 @@ async def get_vat_report(
     current_user: User = Depends(get_current_active_user),
 ):
     """
-    Generate VAT Report (Momsrapport) for a specific period
-    Shows outgoing VAT (sales) and incoming VAT (purchases) with net amount to pay/refund
+    Momsrapport for a period: outgoing and incoming VAT per account, the net to pay
+    or get back, and every box of the momsdeklaration (SKV 4700) derived from BAS
+    account numbers (see ``vat_report_service``).
 
-    If no dates provided, shows all-time totals.
-    If exclude_vat_settlements is True, filters out verifications that appear to be VAT settlements
-    (e.g., entries that zero out VAT accounts when filing declarations).
+    If no dates are given, all-time totals are returned. With
+    ``exclude_vat_settlements`` the verifications that move a period's VAT to the
+    tax account (1630/1650/2650/2660 or described as momsredovisning) are ignored,
+    so an already-settled period still shows what was declared.
     """
-    # Verify user has access to this company
     await verify_company_access(company_id, current_user, db)
 
-    # Get all VAT accounts according to Swedish BAS account plan:
-    # - Outgoing VAT (from sales): 2610-2619
-    # - Incoming VAT (from purchases): 2640-2649
-    # Note: We don't filter on active=True because we want to include inactive accounts
-    # that still have transactions (e.g., from imported historical data)
-    vat_accounts = (
-        db.query(Account)
-        .filter(
-            Account.company_id == company_id,
-            (
-                # Outgoing VAT accounts
-                ((Account.account_number >= 2610) & (Account.account_number <= 2619))
-                |
-                # Incoming VAT accounts
-                ((Account.account_number >= 2640) & (Account.account_number <= 2649))
-            ),
-        )
-        .all()
+    lines, excluded_ids = vat_report_service.collect_lines(
+        db, company_id, start_date, end_date, exclude_vat_settlements
     )
+    decl = vat_report_service.build_declaration(lines)
 
-    # Debug logging
-    import logging
+    # Per-account summary of the VAT accounts themselves (what the ledger says)
+    outgoing: dict[int, dict] = {}
+    incoming: dict[int, dict] = {}
+    for ln in lines:
+        n = ln.account_number
+        if 2610 <= n <= 2639:
+            bucket, signed = outgoing, ln.credit - ln.debit
+        elif 2640 <= n <= 2649:
+            bucket, signed = incoming, ln.debit - ln.credit
+        else:
+            continue
+        row = bucket.setdefault(n, {"account_number": n, "name": ln.account_name, "amount": Decimal(0)})
+        row["amount"] += signed
 
-    logger = logging.getLogger(__name__)
-    logger.info(f"VAT Report - Found {len(vat_accounts)} VAT accounts for company {company_id}")
-    for acc in vat_accounts:
-        logger.info(f"  VAT Account: {acc.account_number} - {acc.name}")
-
-    # Categorize accounts
-    outgoing_vat_accounts = [acc for acc in vat_accounts if 2610 <= acc.account_number <= 2619]
-    incoming_vat_accounts = [acc for acc in vat_accounts if 2640 <= acc.account_number <= 2649]
-
-    logger.info(f"VAT Report - {len(outgoing_vat_accounts)} outgoing, {len(incoming_vat_accounts)} incoming")
-    logger.info(f"VAT Report - Date filter: {start_date} to {end_date}")
-
-    # Build query for transactions
-    query = (
-        db.query(
-            TransactionLine.account_id,
-            func.sum(TransactionLine.debit).label("total_debit"),
-            func.sum(TransactionLine.credit).label("total_credit"),
-        )
-        .join(Verification, TransactionLine.verification_id == Verification.id)
-        .filter(Verification.company_id == company_id, TransactionLine.account_id.in_([acc.id for acc in vat_accounts]))
-    )
-
-    # Apply date filters if provided
-    if start_date:
-        query = query.filter(Verification.transaction_date >= start_date)
-    if end_date:
-        query = query.filter(Verification.transaction_date <= end_date)
-
-    # Exclude VAT settlement verifications if requested
-    if exclude_vat_settlements:
-        # Filter out verifications that appear to be VAT settlements/declarations
-        # Strategy: Exclude verifications that contain BOTH VAT accounts (2610-2649)
-        # AND VAT receivable/payable accounts (2650, 2660)
-        # These are typically used when settling VAT with Skatteverket
-
-        # A settlement moves the period's VAT from the 26xx accounts to the tax account
-        # side: 1630 Skattekonto, 1650 Momsfordran, 2650 Redovisningskonto för moms,
-        # 2660 Särskilda punktskatter/momsskuld. Bokio books 1650/2640/3740, other
-        # programs 2650 or 1630 directly, so all of them count. Descriptions that say
-        # momsredovisning/momsdeklaration are treated the same way.
-        settlement_account_ids = [
-            acc.id
-            for acc in db.query(Account.id)
-            .filter(Account.company_id == company_id, Account.account_number.in_(SETTLEMENT_ACCOUNTS))
-            .all()
+    def _rows(bucket: dict[int, dict]) -> list[dict]:
+        return [
+            {"account_number": r["account_number"], "name": r["name"], "amount": float(r["amount"])}
+            for _, r in sorted(bucket.items())
+            if r["amount"] != 0
         ]
-        settlement_ver_ids: set[int] = set()
-        if settlement_account_ids:
-            settlement_ver_ids.update(
-                v.verification_id
-                for v in db.query(TransactionLine.verification_id)
-                .filter(TransactionLine.account_id.in_(settlement_account_ids))
-                .distinct()
-                .all()
-            )
-        settlement_ver_ids.update(
-            v.id
-            for v in db.query(Verification.id)
-            .filter(
-                Verification.company_id == company_id,
-                Verification.description.ilike("%momsredovisning%")
-                | Verification.description.ilike("%momsdeklaration%")
-                | Verification.description.ilike("%momsavräkning%"),
-            )
-            .all()
-        )
-        if settlement_ver_ids:
-            query = query.filter(~Verification.id.in_(list(settlement_ver_ids)))
-            logger.info(f"VAT Report - Excluding {len(settlement_ver_ids)} settlement verifications")
 
-    query = query.group_by(TransactionLine.account_id)
-
-    transactions = query.all()
-
-    logger.info(f"VAT Report - Found {len(transactions)} transaction groups")
-
-    # Get account details for all transactions (even those not in our VAT ranges)
-    all_account_ids = [t.account_id for t in transactions]
-    all_trans_accounts = db.query(Account).filter(Account.id.in_(all_account_ids)).all()
-    trans_accounts_by_id = {acc.id: acc for acc in all_trans_accounts}
-
-    for trans in transactions:
-        acc = trans_accounts_by_id.get(trans.account_id)
-        if acc:
-            logger.info(
-                f"  Account {acc.account_number} ({acc.name}): Debit={trans.total_debit}, Credit={trans.total_credit}"
-            )
-
-    # Process outgoing VAT (credit balance = sales tax collected)
-    outgoing_vat = []
-    total_outgoing = Decimal("0")
-
-    # Track by VAT rate for SKV 3800 form
-    outgoing_by_rate = {
-        "25": {"vat": Decimal("0"), "accounts": []},
-        "12": {"vat": Decimal("0"), "accounts": []},
-        "6": {"vat": Decimal("0"), "accounts": []},
-    }
-
-    for account in outgoing_vat_accounts:
-        # Find transactions for this account
-        trans = next((t for t in transactions if t.account_id == account.id), None)
-
-        if trans:
-            # Outgoing VAT is credit (negative), so credit - debit gives positive amount
-            vat_amount = (trans.total_credit or Decimal("0")) - (trans.total_debit or Decimal("0"))
-
-            if vat_amount != 0:
-                outgoing_vat.append(
-                    {"account_number": account.account_number, "name": account.name, "amount": float(vat_amount)}
-                )
-                total_outgoing += vat_amount
-
-                # Categorize by VAT rate based on account number
-                # 2611: 25%, 2621: 12%, 2631/2615: 6%
-                if account.account_number == 2611:
-                    outgoing_by_rate["25"]["vat"] += vat_amount
-                    outgoing_by_rate["25"]["accounts"].append(account.account_number)
-                elif account.account_number == 2621:
-                    outgoing_by_rate["12"]["vat"] += vat_amount
-                    outgoing_by_rate["12"]["accounts"].append(account.account_number)
-                elif account.account_number in [2631, 2615]:
-                    outgoing_by_rate["6"]["vat"] += vat_amount
-                    outgoing_by_rate["6"]["accounts"].append(account.account_number)
-
-    # Process incoming VAT (debit balance = purchase tax paid)
-    incoming_vat = []
-    total_incoming = Decimal("0")
-
-    # Track by VAT rate
-    incoming_by_rate = {
-        "25": {"vat": Decimal("0"), "accounts": []},
-        "12": {"vat": Decimal("0"), "accounts": []},
-        "6": {"vat": Decimal("0"), "accounts": []},
-    }
-
-    for account in incoming_vat_accounts:
-        # Find transactions for this account
-        trans = next((t for t in transactions if t.account_id == account.id), None)
-
-        if trans:
-            # Incoming VAT is debit (positive), so debit - credit gives positive amount
-            vat_amount = (trans.total_debit or Decimal("0")) - (trans.total_credit or Decimal("0"))
-
-            if vat_amount != 0:
-                incoming_vat.append(
-                    {"account_number": account.account_number, "name": account.name, "amount": float(vat_amount)}
-                )
-                total_incoming += vat_amount
-
-                # Categorize by VAT rate based on account number
-                # 2641: 25%, 2645: 12%, 2647: 6%
-                if account.account_number == 2641:
-                    incoming_by_rate["25"]["vat"] += vat_amount
-                    incoming_by_rate["25"]["accounts"].append(account.account_number)
-                elif account.account_number == 2645:
-                    incoming_by_rate["12"]["vat"] += vat_amount
-                    incoming_by_rate["12"]["accounts"].append(account.account_number)
-                elif account.account_number == 2647:
-                    incoming_by_rate["6"]["vat"] += vat_amount
-                    incoming_by_rate["6"]["accounts"].append(account.account_number)
-
-    # Net VAT = Outgoing - Incoming
-    # Positive = Pay to Skatteverket
-    # Negative = Refund from Skatteverket
+    total_outgoing = sum((r["amount"] for r in outgoing.values()), Decimal(0))
+    total_incoming = sum((r["amount"] for r in incoming.values()), Decimal(0))
     net_vat = total_outgoing - total_incoming
 
-    # Prepare SKV 3800 form data (Swedish VAT declaration form)
-    skv_3800 = {
-        "outgoing_25": {
-            "vat": float(outgoing_by_rate["25"]["vat"]),
-            "sales": float(outgoing_by_rate["25"]["vat"] / Decimal("0.25"))
-            if outgoing_by_rate["25"]["vat"] != 0
-            else 0.0,
-            "box_sales": "05",  # Ruta för försäljning
-            "box_vat": "06",  # Ruta för moms
-        },
-        "outgoing_12": {
-            "vat": float(outgoing_by_rate["12"]["vat"]),
-            "sales": float(outgoing_by_rate["12"]["vat"] / Decimal("0.12"))
-            if outgoing_by_rate["12"]["vat"] != 0
-            else 0.0,
-            "box_sales": "07",
-            "box_vat": "08",
-        },
-        "outgoing_6": {
-            "vat": float(outgoing_by_rate["6"]["vat"]),
-            "sales": float(outgoing_by_rate["6"]["vat"] / Decimal("0.06"))
-            if outgoing_by_rate["6"]["vat"] != 0
-            else 0.0,
-            "box_sales": "09",
-            "box_vat": "10",
-        },
-        "incoming_total": {
-            "vat": float(total_incoming),
-            "box": "30",  # Ruta för ingående moms
-        },
-        "net_vat": {
-            "amount": float(net_vat),
-            "box": "48",  # Ruta för moms att betala/få tillbaka
-        },
-    }
-
-    # Fetch detailed verifications for debug purposes
+    # Verifications behind the figures, for the details panel in the UI
+    ver_ids = sorted({ln.verification_id for ln in lines if 2610 <= ln.account_number <= 2649})
     verification_details = []
-    if transactions:
-        # Get all unique verification IDs from our filtered transactions
-        verification_ids = (
-            db.query(TransactionLine.verification_id)
-            .join(Verification, TransactionLine.verification_id == Verification.id)
-            .filter(
-                Verification.company_id == company_id, TransactionLine.account_id.in_([acc.id for acc in vat_accounts])
-            )
-        )
-
-        # Apply same filters as main query
-        if start_date:
-            verification_ids = verification_ids.filter(Verification.transaction_date >= start_date)
-        if end_date:
-            verification_ids = verification_ids.filter(Verification.transaction_date <= end_date)
-
-        # Apply settlement exclusion
-        if exclude_vat_settlements:
-            settlement_accounts = (
-                db.query(Account.id)
-                .filter(Account.company_id == company_id, Account.account_number.in_(SETTLEMENT_ACCOUNTS))
-                .all()
-            )
-
-            if settlement_accounts:
-                settlement_account_ids = [acc.id for acc in settlement_accounts]
-                settlement_verification_ids = (
-                    db.query(TransactionLine.verification_id)
-                    .filter(TransactionLine.account_id.in_(settlement_account_ids))
-                    .distinct()
-                    .all()
-                )
-                settlement_ver_ids = [v.verification_id for v in settlement_verification_ids]
-
-                if settlement_ver_ids:
-                    verification_ids = verification_ids.filter(~Verification.id.in_(settlement_ver_ids))
-
-        verification_ids = verification_ids.distinct().all()
-        ver_ids = [v.verification_id for v in verification_ids]
-
-        # Fetch full verification details
+    if ver_ids:
         verifications = (
             db.query(Verification)
             .filter(Verification.id.in_(ver_ids))
-            .order_by(Verification.transaction_date.desc())
+            .order_by(Verification.transaction_date.desc(), Verification.verification_number.desc())
             .all()
         )
-
+        all_lines = (
+            db.query(TransactionLine, Account)
+            .join(Account, TransactionLine.account_id == Account.id)
+            .filter(TransactionLine.verification_id.in_(ver_ids))
+            .all()
+        )
+        by_ver: dict[int, list] = {}
+        for tl, acc in all_lines:
+            by_ver.setdefault(tl.verification_id, []).append(
+                {
+                    "account_number": acc.account_number,
+                    "account_name": acc.name,
+                    "debit": float(tl.debit),
+                    "credit": float(tl.credit),
+                    "is_vat_account": 2610 <= acc.account_number <= 2649,
+                }
+            )
         for ver in verifications:
-            # Get ALL transaction lines for this verification (not just VAT)
-            all_trans = db.query(TransactionLine).filter(TransactionLine.verification_id == ver.id).all()
-
-            # Get all accounts for these transactions
-            all_account_ids = [tl.account_id for tl in all_trans]
-            all_accounts = db.query(Account).filter(Account.id.in_(all_account_ids)).all()
-            accounts_dict = {acc.id: acc for acc in all_accounts}
-
-            # VAT account IDs for marking
-            vat_account_ids = {acc.id for acc in vat_accounts}
-
-            transaction_lines = []
-            for tl in all_trans:
-                acc = accounts_dict.get(tl.account_id)
-                if acc:
-                    transaction_lines.append(
-                        {
-                            "account_number": acc.account_number,
-                            "account_name": acc.name,
-                            "debit": float(tl.debit),
-                            "credit": float(tl.credit),
-                            "is_vat_account": tl.account_id in vat_account_ids,
-                        }
-                    )
-
             verification_details.append(
                 {
                     "id": ver.id,
@@ -850,7 +606,7 @@ async def get_vat_report(
                     "series": ver.series,
                     "transaction_date": ver.transaction_date.isoformat(),
                     "description": ver.description or "",
-                    "transaction_lines": transaction_lines,
+                    "transaction_lines": sorted(by_ver.get(ver.id, []), key=lambda r: r["account_number"]),
                 }
             )
 
@@ -859,30 +615,13 @@ async def get_vat_report(
         "report_type": "vat_report",
         "start_date": start_date.isoformat() if start_date else None,
         "end_date": end_date.isoformat() if end_date else None,
-        "outgoing_vat": {"accounts": outgoing_vat, "total": float(total_outgoing)},
-        "incoming_vat": {"accounts": incoming_vat, "total": float(total_incoming)},
+        "outgoing_vat": {"accounts": _rows(outgoing), "total": float(total_outgoing)},
+        "incoming_vat": {"accounts": _rows(incoming), "total": float(total_incoming)},
         "net_vat": float(net_vat),
         "pay_or_refund": "pay" if net_vat > 0 else "refund" if net_vat < 0 else "zero",
-        "skv_3800": skv_3800,
+        "declaration": decl.to_dict(),
         "debug_info": {
-            "total_vat_accounts_found": len(vat_accounts),
-            "outgoing_vat_accounts": [
-                {"number": acc.account_number, "name": acc.name} for acc in outgoing_vat_accounts
-            ],
-            "incoming_vat_accounts": [
-                {"number": acc.account_number, "name": acc.name} for acc in incoming_vat_accounts
-            ],
-            "transaction_groups_found": len(transactions),
-            "accounts_with_transactions": [
-                {
-                    "number": trans_accounts_by_id[t.account_id].account_number,
-                    "name": trans_accounts_by_id[t.account_id].name,
-                    "debit": float(t.total_debit or 0),
-                    "credit": float(t.total_credit or 0),
-                }
-                for t in transactions
-                if t.account_id in trans_accounts_by_id
-            ],
+            "excluded_settlement_verifications": len(excluded_ids),
             "verifications": verification_details,
         },
     }
@@ -967,100 +706,6 @@ async def get_vat_periods(
     }
 
 
-@router.get("/vat-debug")
-async def get_vat_debug(
-    company_id: int = Query(..., description="Company ID"),
-    start_date: date | None = Query(None, description="Start date (YYYY-MM-DD)"),
-    end_date: date | None = Query(None, description="End date (YYYY-MM-DD)"),
-    db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_active_user),
-):
-    """
-    Debug endpoint to see what VAT accounts and transactions exist
-    """
-    # Verify user has access to this company
-    await verify_company_access(company_id, current_user, db)
-
-    # Get all VAT accounts (including inactive ones)
-    vat_accounts = (
-        db.query(Account)
-        .filter(
-            Account.company_id == company_id,
-            (
-                ((Account.account_number >= 2610) & (Account.account_number <= 2619))
-                | ((Account.account_number >= 2640) & (Account.account_number <= 2649))
-            ),
-        )
-        .all()
-    )
-
-    # Get all verifications with dates
-    query = db.query(Verification).filter(Verification.company_id == company_id)
-
-    if start_date:
-        query = query.filter(Verification.transaction_date >= start_date)
-    if end_date:
-        query = query.filter(Verification.transaction_date <= end_date)
-
-    verifications = query.all()
-
-    # Get transaction lines for VAT accounts
-    vat_account_ids = [acc.id for acc in vat_accounts]
-
-    trans_query = (
-        db.query(TransactionLine)
-        .join(Verification, TransactionLine.verification_id == Verification.id)
-        .filter(
-            Verification.company_id == company_id,
-            TransactionLine.account_id.in_(vat_account_ids) if vat_account_ids else False,
-        )
-    )
-
-    if start_date:
-        trans_query = trans_query.filter(Verification.transaction_date >= start_date)
-    if end_date:
-        trans_query = trans_query.filter(Verification.transaction_date <= end_date)
-
-    vat_transactions = trans_query.all()
-
-    return {
-        "vat_accounts": [
-            {
-                "id": acc.id,
-                "account_number": acc.account_number,
-                "name": acc.name,
-                "current_balance": float(acc.current_balance),
-            }
-            for acc in vat_accounts
-        ],
-        "total_verifications": len(verifications),
-        "verification_date_range": {
-            "earliest": min([v.transaction_date.isoformat() for v in verifications]) if verifications else None,
-            "latest": max([v.transaction_date.isoformat() for v in verifications]) if verifications else None,
-        }
-        if verifications
-        else None,
-        "vat_transactions": [
-            {
-                "account_id": t.account_id,
-                "verification_id": t.verification_id,
-                "debit": float(t.debit),
-                "credit": float(t.credit),
-                "verification_date": db.query(Verification)
-                .filter(Verification.id == t.verification_id)
-                .first()
-                .transaction_date.isoformat(),
-            }
-            for t in vat_transactions[:50]  # Limit to first 50
-        ],
-        "total_vat_transactions": len(vat_transactions),
-        "filters": {
-            "start_date": start_date.isoformat() if start_date else None,
-            "end_date": end_date.isoformat() if end_date else None,
-        },
-    }
-
-
 @router.get("/vat-report-xml")
 async def export_vat_report_xml(
     company_id: int = Query(..., description="Company ID"),
@@ -1071,121 +716,22 @@ async def export_vat_report_xml(
     current_user: User = Depends(get_current_active_user),
 ):
     """
-    Export VAT report as XML file for upload to Skatteverket (eSKDUpload format version 6.0)
-    Returns an XML file that can be uploaded directly to Swedish Tax Agency.
+    The period's momsdeklaration as an eSKDUpload 6.0 file for upload at Skatteverket.
+
+    Amounts are whole kronor with the öre dropped and box 49 is the sum of the
+    rounded VAT boxes, exactly as Skatteverket (and Bokio) compute it.
     """
-    # Verify user has access to this company
     await verify_company_access(company_id, current_user, db)
 
-    # Get company info for org number
     company = db.query(Company).filter(Company.id == company_id).first()
     if not company:
         raise HTTPException(status_code=404, detail="Company not found")
 
-    # Get the VAT report data (reuse existing logic)
-    # get_vat_report is an async endpoint function: await it and pass the
-    # dependencies explicitly, since FastAPI does not inject them on a direct call.
-    vat_report_response = await get_vat_report(
-        company_id=company_id,
-        start_date=start_date,
-        end_date=end_date,
-        exclude_vat_settlements=exclude_vat_settlements,
-        db=db,
-        current_user=current_user,
-    )
+    lines, _ = vat_report_service.collect_lines(db, company_id, start_date, end_date, exclude_vat_settlements)
+    decl = vat_report_service.build_declaration(lines)
+    full_xml = vat_report_service.eskd_xml(company.org_number or "", end_date, decl)
 
-    skv = vat_report_response["skv_3800"]
-
-    # Format period as YYYYMM (use end date)
-    period = end_date.strftime("%Y%m")
-
-    # Convert amounts to integers (öre to whole kronor, rounded)
-    def to_int(amount: float) -> int:
-        return int(round(amount))
-
-    # Create XML structure
-    root = ET.Element("eSKDUpload", Version="6.0")
-
-    # Organization number (format: xxxxxx-xxxx)
-    org_nr = ET.SubElement(root, "OrgNr")
-    org_nr.text = company.org_number if company.org_number else ""
-
-    # Moms section
-    moms = ET.SubElement(root, "Moms")
-
-    # Period
-    period_elem = ET.SubElement(moms, "Period")
-    period_elem.text = period
-
-    # Sales and output VAT by rate
-    # 25% VAT
-    if skv["outgoing_25"]["vat"] > 0:
-        # Försäljning 25% (Box 05)
-        fors_25 = ET.SubElement(moms, "ForsMomsEjAnnan")
-        fors_25.text = str(to_int(skv["outgoing_25"]["sales"]))
-
-        # Utgående moms 25% (Box 10 in SKV naming)
-        moms_utg_hog = ET.SubElement(moms, "MomsUtgHog")
-        moms_utg_hog.text = str(to_int(skv["outgoing_25"]["vat"]))
-
-    # 12% VAT
-    if skv["outgoing_12"]["vat"] > 0:
-        # Försäljning 12%
-        fors_12_elem = ET.SubElement(moms, "ForsMoms12")
-        fors_12_elem.text = str(to_int(skv["outgoing_12"]["sales"]))
-
-        # Utgående moms 12%
-        moms_utg_medel = ET.SubElement(moms, "MomsUtgMedel")
-        moms_utg_medel.text = str(to_int(skv["outgoing_12"]["vat"]))
-
-    # 6% VAT
-    if skv["outgoing_6"]["vat"] > 0:
-        # Försäljning 6%
-        fors_6_elem = ET.SubElement(moms, "ForsMoms6")
-        fors_6_elem.text = str(to_int(skv["outgoing_6"]["sales"]))
-
-        # Utgående moms 6%
-        moms_utg_lag = ET.SubElement(moms, "MomsUtgLag")
-        moms_utg_lag.text = str(to_int(skv["outgoing_6"]["vat"]))
-
-    # Ingående moms (deductible input VAT)
-    if skv["incoming_total"]["vat"] > 0:
-        moms_ing_avdr = ET.SubElement(moms, "MomsIngAvdr")
-        moms_ing_avdr.text = str(to_int(skv["incoming_total"]["vat"]))
-
-    # Net VAT to pay or refund
-    moms_betala = ET.SubElement(moms, "MomsBetala")
-    net_vat_amount = to_int(skv["net_vat"]["amount"])
-    moms_betala.text = str(net_vat_amount)
-
-    # Pretty print the XML with indentation
-    def indent(elem, level=0):
-        i = "\n" + level * "  "
-        if len(elem):
-            if not elem.text or not elem.text.strip():
-                elem.text = i + "  "
-            if not elem.tail or not elem.tail.strip():
-                elem.tail = i
-            for child in elem:
-                indent(child, level + 1)
-            if not child.tail or not child.tail.strip():
-                child.tail = i
-        else:
-            if level and (not elem.tail or not elem.tail.strip()):
-                elem.tail = i
-
-    indent(root)
-
-    # Build the document explicitly: XML declaration, then DOCTYPE, then the root
-    # element. (ET.tostring with encoding="utf-8" emits no declaration, so the old
-    # "insert DOCTYPE after the first line" logic put it inside <eSKDUpload>.)
-    xml_declaration = '<?xml version="1.0" encoding="utf-8"?>\n'
-    doctype = '<!DOCTYPE eSKDUpload PUBLIC "-//Skatteverket, Sweden//DTD Skatteverket eSKDUpload-DTD Version 6.0//SV" "https://www.skatteverket.se/download/18.3f4496fd14864cc5ac99cb1/1415022101213/eSKDUpload_6p0.dtd">\n'
-    full_xml = xml_declaration + doctype + ET.tostring(root, encoding="unicode", method="xml").rstrip() + "\n"
-
-    # Return as downloadable file
-    filename = f"momsdeklaration_{company.org_number}_{period}.xml"
-
+    filename = f"momsdeklaration_{company.org_number}_{end_date:%Y%m}.xml"
     return Response(
         content=full_xml.encode("utf-8"),
         media_type="application/xml",

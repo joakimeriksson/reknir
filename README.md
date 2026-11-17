@@ -67,6 +67,7 @@ docker compose exec backend alembic upgrade head
 | [Portable Archive](docs/PORTABLE_ARCHIVE.md) | Backup format and per-company export/import |
 | [Bokio Import](docs/BOKIO_IMPORT.md) | Migrating a company from Bokio |
 | [Compliance](docs/COMPLIANCE.md) | Bokföringslagen rules enforced: reversals, period locks, gaps, audit log |
+| [VAT Report](docs/VAT_REPORT.md) | How the momsdeklaration boxes and the eSKD file are derived from BAS accounts |
 | [Roadmap](docs/ROADMAP.md) | Feature roadmap and future plans |
 | [Contributing](CONTRIBUTING.md) | CI pipeline, code style, and contribution guidelines |
 
